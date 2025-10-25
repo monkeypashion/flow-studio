@@ -1,0 +1,40 @@
+{
+  "id": "a70b1afa834c452cbabfc40f2f0aae3e",
+  "name": "Conveyor",
+  "typeId": "spx.SPX_Generic_Industrial_Machine",
+  "description": "Material transfer conveyor at Hills Quarry",
+  "aspects": [
+    {
+      "name": "OEE_Data",
+      "category": "dynamic",
+      "variables": [
+        { "name": "GoodParts", "type": "Long", "unit": "count" },
+        { "name": "BadParts", "type": "Long", "unit": "count" },
+        { "name": "OrderID", "type": "String" },
+        { "name": "ProductCode", "type": "String" },
+        { "name": "Status", "type": "String" }
+      ]
+    },
+    {
+      "name": "OEE_KPIs",
+      "category": "dynamic",
+      "variables": [
+        { "name": "Availability", "type": "Double", "unit": "%" },
+        { "name": "Performance", "type": "Double", "unit": "%" },
+        { "name": "Quality", "type": "Double", "unit": "%" },
+        { "name": "OEE", "type": "Double", "unit": "%" }
+      ]
+    },
+    {
+      "name": "Electric_Motor_Data",
+      "category": "dynamic",
+      "variables": [
+        { "name": "Speed_RPM", "type": "Double", "unit": "rpm" },
+        { "name": "Torque", "type": "Double", "unit": "Nm" },
+        { "name": "Temperature", "type": "Double", "unit": "°C" },
+        { "name": "Running_Hours", "type": "Double", "unit": "hours" },
+        { "name": "Bearing_Fault_Detection", "type": "Boolean" }
+      ]
+    }
+  ]
+}

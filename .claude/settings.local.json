@@ -1,0 +1,32 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm create:*)",
+      "Bash(npm install)",
+      "Bash(npm install:*)",
+      "Bash(npx tailwindcss init:*)",
+      "Bash(npm run dev:*)",
+      "Bash(start http://localhost:5173)",
+      "Bash(npm uninstall:*)",
+      "Bash(start http://localhost:5175)",
+      "Bash(npm run build:*)",
+      "Bash(start http://localhost:5174)",
+      "mcp__ide__getDiagnostics",
+      "Bash(xcopy:*)",
+      "Bash(robocopy:*)",
+      "Bash(dir:*)",
+      "Bash(findstr:*)",
+      "Bash(powershell:*)",
+      "Bash($timestamp = Get-Date -Format 'yyyyMMdd-HHmmss')",
+      "Bash(Copy-Item -Path src -Destination \"src-backup-$timestamp\" -Recurse)",
+      "Bash(Write-Output \"Backup created: src-backup-$timestamp\")",
+      "Bash(netstat:*)",
+      "Bash(curl:*)",
+      "Read(//d/OneDrive/Physical Devices/Fireblade/Documents/Software Projects/MindConnect-NodeJS - CLI/**)",
+      "Bash(git init:*)",
+      "Bash(git add:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

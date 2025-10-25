@@ -1,0 +1,1 @@
+// Backup of current Clip.tsx for reference
