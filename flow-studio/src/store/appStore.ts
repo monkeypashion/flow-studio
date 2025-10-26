@@ -104,6 +104,8 @@ interface AppStore {
   // UI layout
   treeWidth: number;
   setTreeWidth: (width: number) => void;
+  trackHeaderWidth: number;
+  setTrackHeaderWidth: (width: number) => void;
 
   // Tenant Credentials
   tenants: TenantCredential[];
@@ -253,6 +255,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   // UI layout
   treeWidth: 192, // Default 192px (w-48)
+  trackHeaderWidth: 192, // Default 192px - width of sticky track headers
 
   // Group methods
   addGroup: (name, assetId) => {
@@ -2163,4 +2166,10 @@ export const useAppStore = create<AppStore>((set, get) => ({
   setTreeWidth: (width) => set(() => ({
     treeWidth: width,
   })),
+
+  setTrackHeaderWidth: (width) => {
+    // Enforce min/max constraints
+    const clampedWidth = Math.max(100, Math.min(400, width));
+    set(() => ({ trackHeaderWidth: clampedWidth }));
+  },
 }));
