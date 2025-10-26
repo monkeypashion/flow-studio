@@ -370,15 +370,29 @@ export const Timeline: React.FC = () => {
   // Recalculate zoom when viewport duration or track header width changes
   useEffect(() => {
     // Wait for ResizeObserver to set containerWidth before calculating zoom
-    if (containerWidth === null) return;
+    if (containerWidth === null) {
+      console.log('[ZOOM] containerWidth is null, skipping zoom calc');
+      return;
+    }
 
     // Use containerWidth state which is kept up-to-date by the ResizeObserver
     const availableWidth = containerWidth - trackHeaderWidth;
     const newZoom = availableWidth / timeline.viewportDuration;
     const clampedZoom = Math.max(0.001, Math.min(200, newZoom));
 
+    console.log('[ZOOM] Recalculating zoom:', {
+      containerWidth,
+      trackHeaderWidth,
+      availableWidth,
+      viewportDuration: timeline.viewportDuration,
+      viewportDurationDays: timeline.viewportDuration / 86400,
+      newZoom,
+      clampedZoom,
+      oldZoom: timeline.zoom,
+    });
+
     setZoom(clampedZoom);
-  }, [timeline.viewportDuration, trackHeaderWidth, containerWidth, setZoom]);
+  }, [timeline.viewportDuration, trackHeaderWidth, containerWidth, setZoom, timeline.zoom]);
 
   // Track container width and recalculate zoom when it changes
   useEffect(() => {
@@ -388,6 +402,8 @@ export const Timeline: React.FC = () => {
     // Create a ResizeObserver to detect when available width changes (panels opening/closing, window resize)
     const resizeObserver = new ResizeObserver(() => {
       const newContainerWidth = timelineContainer.clientWidth;
+
+      console.log('[RESIZE] Container width changed:', newContainerWidth);
 
       // Update container width state - this will trigger the useEffect that recalculates zoom
       setContainerWidth(newContainerWidth);
