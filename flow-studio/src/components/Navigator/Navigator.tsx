@@ -2,7 +2,7 @@ import React, { useRef } from 'react';
 import { useAppStore } from '../../store/appStore';
 
 export const Navigator: React.FC = () => {
-  const { timeline, setViewport, setZoom } = useAppStore();
+  const { timeline, trackHeaderWidth, setViewport, setZoom } = useAppStore();
 
   // Navigator bar dimensions
   const NAVIGATOR_HEIGHT = 60;
@@ -70,16 +70,15 @@ export const Navigator: React.FC = () => {
     // Get the actual timeline scroll container element
     // This is the element with class 'hide-scrollbar' in Timeline.tsx
     const timelineContainer = document.querySelector('.hide-scrollbar') as HTMLElement;
-    const TRACK_HEADER_WIDTH = 192; // Width of sticky track headers (VisibilityTree)
 
     if (!timelineContainer) {
       // Fallback: use window width minus sidebar widths
-      const availableWidth = window.innerWidth - TRACK_HEADER_WIDTH - 192; // Subtract VisibilityTree + panels
+      const availableWidth = window.innerWidth - trackHeaderWidth - 192; // Subtract VisibilityTree + panels
       return Math.max(0.001, Math.min(200, availableWidth / viewportDuration));
     }
 
     // Get the actual visible width of the timeline container, minus the sticky track headers
-    const availableWidth = timelineContainer.clientWidth - TRACK_HEADER_WIDTH;
+    const availableWidth = timelineContainer.clientWidth - trackHeaderWidth;
 
     // Calculate zoom: pixels per second needed to fit viewport in screen
     // zoom = available screen width / viewport duration
