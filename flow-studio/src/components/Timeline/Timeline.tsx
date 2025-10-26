@@ -363,19 +363,13 @@ export const Timeline: React.FC = () => {
 
   // Recalculate zoom when viewport duration or track header width changes
   useEffect(() => {
-    const timelineContainer = scrollContainerRef.current;
-    if (!timelineContainer) return;
-
-    const availableWidth = timelineContainer.clientWidth - trackHeaderWidth;
+    // Use containerWidth state which is kept up-to-date by the ResizeObserver
+    const availableWidth = containerWidth - trackHeaderWidth;
     const newZoom = availableWidth / timeline.viewportDuration;
     const clampedZoom = Math.max(0.001, Math.min(200, newZoom));
 
-    // Only update if zoom changed significantly
-    const threshold = Math.max(0.0001, timeline.zoom * 0.001);
-    if (Math.abs(timeline.zoom - clampedZoom) > threshold) {
-      setZoom(clampedZoom);
-    }
-  }, [timeline.viewportDuration, trackHeaderWidth, timeline.zoom, setZoom]);
+    setZoom(clampedZoom);
+  }, [timeline.viewportDuration, trackHeaderWidth, containerWidth, setZoom]);
 
   // Track container width and recalculate zoom when it changes
   useEffect(() => {
@@ -410,7 +404,7 @@ export const Timeline: React.FC = () => {
     return () => {
       resizeObserver.disconnect();
     };
-  }, [timeline.viewportDuration, timeline.zoom, setZoom, trackHeaderWidth]);
+  }, [trackHeaderWidth, setZoom]);
 
   return (
     <div className="flex flex-col h-full bg-timeline-bg">
