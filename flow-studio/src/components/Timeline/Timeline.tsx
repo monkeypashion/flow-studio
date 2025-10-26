@@ -24,6 +24,7 @@ export const Timeline: React.FC = () => {
     showAssets,
     showAspects,
     treeWidth,
+    trackHeaderWidth,
     setScroll,
     setZoom,
     setPlayhead,
@@ -50,14 +51,13 @@ export const Timeline: React.FC = () => {
   const [containerWidth, setContainerWidth] = useState(1400); // Track container width for proper sizing
 
   // Calculate timeline width
-  // Track headers are fixed at 192px, independent of tree width
-  const TRACK_HEADER_WIDTH = 192;
+  // Track headers are resizable, independent of tree width
   const calculatedWidth = timeline.duration * timeline.zoom;
   // Ensure timeline always extends at least to fill the visible container
   // This prevents container background showing through when timeline is narrower than viewport
   // containerWidth is already the width AFTER the VisibilityTree, so just subtract track header
-  const minWidth = Math.max(calculatedWidth, containerWidth - TRACK_HEADER_WIDTH);
-  const timelineWidth = minWidth + TRACK_HEADER_WIDTH;
+  const minWidth = Math.max(calculatedWidth, containerWidth - trackHeaderWidth);
+  const timelineWidth = minWidth + trackHeaderWidth;
 
 
   // Handle scroll
@@ -79,10 +79,10 @@ export const Timeline: React.FC = () => {
 
         // Subtract track header width to get position in track content area
         // This ensures playhead can't go behind the track header
-        const xInTrackArea = Math.max(TRACK_HEADER_WIDTH, x);
+        const xInTrackArea = Math.max(trackHeaderWidth, x);
 
         // Convert to time (subtract header offset)
-        let time = (xInTrackArea - TRACK_HEADER_WIDTH) / timeline.zoom;
+        let time = (xInTrackArea - trackHeaderWidth) / timeline.zoom;
 
         // Snap to grid if enabled
         if (timeline.gridSnap) {
@@ -309,7 +309,7 @@ export const Timeline: React.FC = () => {
         // Calculate and set the zoom FIRST (before setViewport)
         const timelineContainer = document.querySelector('.hide-scrollbar') as HTMLElement;
         // timelineContainer.clientWidth is already after VisibilityTree, just subtract track header
-        const availableWidth = (timelineContainer?.clientWidth || 1200) - TRACK_HEADER_WIDTH;
+        const availableWidth = (timelineContainer?.clientWidth || 1200) - trackHeaderWidth;
         const newZoom = availableWidth / viewportDuration;
         useAppStore.getState().setZoom(Math.max(0.001, Math.min(200, newZoom)));
 
@@ -348,7 +348,7 @@ export const Timeline: React.FC = () => {
 
       // For zoom calculation, remove track header width
       // newContainerWidth is already after VisibilityTree
-      const availableWidth = newContainerWidth - TRACK_HEADER_WIDTH;
+      const availableWidth = newContainerWidth - trackHeaderWidth;
 
       // Calculate zoom to fit viewport duration in available width (Navigator controls this)
       const newZoom = availableWidth / timeline.viewportDuration;
@@ -503,7 +503,7 @@ export const Timeline: React.FC = () => {
                 className={`absolute top-0 bottom-0 w-0.5 z-20 pointer-events-none ${
                   isDraggingPlayhead ? 'bg-yellow-400' : 'bg-red-500'
                 }`}
-                style={{ left: `${timeline.playheadPosition * timeline.zoom + TRACK_HEADER_WIDTH}px` }}
+                style={{ left: `${timeline.playheadPosition * timeline.zoom + trackHeaderWidth}px` }}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ duration: 0.2 }}
