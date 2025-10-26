@@ -261,7 +261,7 @@ export const Timeline: React.FC = () => {
         <div
           key={i}
           className="absolute flex flex-col items-center"
-          style={{ left: `${i * timeline.zoom}px` }}
+          style={{ left: `${trackHeaderWidth + (i * timeline.zoom)}px` }}
         >
           <div className="h-2 w-px bg-gray-600" />
           <div className="flex flex-col items-center mt-1">
