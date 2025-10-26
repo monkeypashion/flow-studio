@@ -25,6 +25,7 @@ export const Group: React.FC<GroupProps> = ({
     showAssets,
     showAspects,
     selectedItem,
+    trackHeaderWidth,
   } = useAppStore();
 
   // Check if this group is selected
@@ -36,9 +37,12 @@ export const Group: React.FC<GroupProps> = ({
       {showAssets && (
         <div className={`flex items-stretch border-b ${isSelected ? 'border-cyan-500/30' : 'border-gray-700'}`}>
             {/* Left side - Group info and controls */}
-            <div className={`w-48 flex-shrink-0 border-r px-3 py-2 sticky left-0 z-20 transition-colors ${
-              isSelected ? 'bg-cyan-500/40 border-cyan-400' : 'bg-gray-800 border-gray-700'
-            }`}>
+            <div
+              className={`flex-shrink-0 border-r px-3 py-2 sticky left-0 z-20 transition-colors ${
+                isSelected ? 'bg-cyan-500/40 border-cyan-400' : 'bg-gray-800 border-gray-700'
+              }`}
+              style={{ width: `${trackHeaderWidth}px` }}
+            >
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-2">
                   {/* Expand/Collapse button */}
@@ -129,7 +133,7 @@ export const Group: React.FC<GroupProps> = ({
             {group.aspects.length === 0 ? (
               showAssets && (
                 <div className="flex">
-                  <div className="w-48 flex-shrink-0 bg-gray-900 border-r border-gray-700 px-3 py-4">
+                  <div className="flex-shrink-0 bg-gray-900 border-r border-gray-700 px-3 py-4" style={{ width: `${trackHeaderWidth}px` }}>
                     <div className="text-xs text-gray-500 text-center">No aspects</div>
                   </div>
                   <div className="flex-1 bg-track-bg py-4 px-3">
