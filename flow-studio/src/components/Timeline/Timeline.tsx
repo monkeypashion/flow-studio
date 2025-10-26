@@ -553,10 +553,13 @@ export const Timeline: React.FC = () => {
             >
               {/* Playhead */}
               <motion.div
-                className={`absolute top-0 bottom-0 w-0.5 z-20 pointer-events-none ${
+                className={`absolute top-0 bottom-0 w-0.5 pointer-events-none ${
                   isDraggingPlayhead ? 'bg-yellow-400' : 'bg-red-500'
                 }`}
-                style={{ left: `${timeline.playheadPosition * timeline.zoom + trackHeaderWidth}px` }}
+                style={{
+                  left: `${timeline.playheadPosition * timeline.zoom + trackHeaderWidth}px`,
+                  zIndex: 60  // Higher than sticky spacer (50) to appear above timeline header
+                }}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ duration: 0.2 }}
