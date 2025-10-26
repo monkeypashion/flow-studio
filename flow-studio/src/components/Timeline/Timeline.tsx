@@ -261,7 +261,7 @@ export const Timeline: React.FC = () => {
         <div
           key={i}
           className="absolute flex flex-col items-center"
-          style={{ left: `${trackHeaderWidth + (i * timeline.zoom)}px` }}
+          style={{ left: `${i * timeline.zoom}px` }}
         >
           <div className="h-2 w-px bg-gray-600" />
           <div className="flex flex-col items-center mt-1">
@@ -509,32 +509,39 @@ export const Timeline: React.FC = () => {
             className="flex-1 overflow-auto hide-scrollbar bg-timeline-bg"
             onScroll={handleScroll}
           >
-            {/* Time ruler - matches track layout with sticky left spacer */}
-            <div className="sticky top-0 z-40 bg-timeline-bg border-b border-gray-700 flex">
-              {/* Empty spacer to match track headers - sticky so it stays at left edge */}
+            {/* Time ruler */}
+            <div className="sticky top-0 z-40 bg-timeline-bg border-b border-gray-700">
+              {/* Actual time ruler that scrolls - full width */}
               <div
-                className="bg-gray-900 border-r border-gray-700 h-14 sticky left-0 flex-shrink-0"
-                style={{ width: `${trackHeaderWidth}px`, zIndex: 50 }}
-              >
-                {/* Resize handle - draggable vertical bar */}
-                <div
-                  className={`absolute right-0 top-0 bottom-0 w-1 cursor-col-resize z-50 transition-colors ${
-                    isDraggingHeaderResize ? 'bg-blue-500' : 'hover:bg-blue-400 bg-transparent'
-                  }`}
-                  onMouseDown={handleHeaderResizeMouseDown}
-                  title="Drag to resize track headers"
-                />
-              </div>
-
-              {/* Actual time ruler that scrolls - distinct shade to show timeline area */}
-              <div
-                className="h-14 bg-gray-800 cursor-pointer flex-1"
-                style={{ minWidth: `${minWidth}px` }}
+                className="h-14 bg-gray-800 cursor-pointer"
+                style={{ width: `${timelineWidth}px` }}
                 onClick={handleTimelineClick}
                 onDoubleClick={handleTimelineClick}
               >
                 {generateTimeMarkers()}
               </div>
+            </div>
+
+            {/* Sticky track header spacer - SEPARATE, overlays time ruler */}
+            <div
+              className="bg-gray-900 border-r border-gray-700 h-14"
+              style={{
+                width: `${trackHeaderWidth}px`,
+                position: 'sticky',
+                top: 0,
+                left: 0,
+                marginTop: '-56px', // Pull up to overlay time ruler (h-14 = 56px)
+                zIndex: 50
+              }}
+            >
+              {/* Resize handle - draggable vertical bar */}
+              <div
+                className={`absolute right-0 top-0 bottom-0 w-1 cursor-col-resize z-50 transition-colors ${
+                  isDraggingHeaderResize ? 'bg-blue-500' : 'hover:bg-blue-400 bg-transparent'
+                }`}
+                onMouseDown={handleHeaderResizeMouseDown}
+                title="Drag to resize track headers"
+              />
             </div>
 
             {/* Tracks container */}
