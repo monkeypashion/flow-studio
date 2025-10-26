@@ -389,23 +389,8 @@ export const Timeline: React.FC = () => {
     const resizeObserver = new ResizeObserver(() => {
       const newContainerWidth = timelineContainer.clientWidth;
 
-      // Update container width state
+      // Update container width state - this will trigger the useEffect that recalculates zoom
       setContainerWidth(newContainerWidth);
-
-      // For zoom calculation, remove track header width
-      // newContainerWidth is already after VisibilityTree
-      const availableWidth = newContainerWidth - trackHeaderWidth;
-
-      // Calculate zoom to fit viewport duration in available width (Navigator controls this)
-      const newZoom = availableWidth / timeline.viewportDuration;
-      // Allow very low zoom for narrow windows (0.001 = 1000 seconds per pixel)
-      const clampedZoom = Math.max(0.001, Math.min(200, newZoom));
-
-      // Only update if zoom changed (use relative threshold for small zoom values)
-      const threshold = Math.max(0.0001, timeline.zoom * 0.001); // 0.1% change threshold
-      if (Math.abs(timeline.zoom - clampedZoom) > threshold) {
-        setZoom(clampedZoom);
-      }
     });
 
     resizeObserver.observe(timelineContainer);
@@ -413,7 +398,7 @@ export const Timeline: React.FC = () => {
     return () => {
       resizeObserver.disconnect();
     };
-  }, [trackHeaderWidth, timeline.viewportDuration, timeline.zoom, setZoom]);
+  }, []); // No dependencies - observer only needs to track container width changes
 
   return (
     <div className="flex flex-col h-full bg-timeline-bg">
