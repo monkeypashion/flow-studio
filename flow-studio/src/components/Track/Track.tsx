@@ -144,10 +144,10 @@ export const Track: React.FC<TrackProps> = ({
     <div className={`flex border-b ${isHighlighted ? 'border-cyan-500/30' : 'border-gray-700'}`} data-track-id={track.id}>
       {/* Track header - sticky so it stays visible during horizontal scroll */}
       <div
-        className={`w-48 flex-shrink-0 border-r px-3 py-2 flex flex-col gap-2 sticky left-0 z-20 transition-colors ${
+        className={`flex-shrink-0 border-r px-3 py-2 flex flex-col gap-2 sticky left-0 z-20 transition-colors ${
           isHighlighted ? 'bg-cyan-500/40 border-cyan-400' : 'bg-gray-800 border-gray-700'
         }`}
-        style={{ height: `${track.height}px` }}
+        style={{ height: `${track.height}px`, width: `${trackHeaderWidth}px` }}
       >
         {/* Top row: Track name */}
         <div className="flex items-center min-w-0">

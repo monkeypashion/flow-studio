@@ -48,6 +48,7 @@ export const Timeline: React.FC = () => {
   const timelineRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [isDraggingPlayhead, setIsDraggingPlayhead] = useState(false);
+  const [isDraggingHeaderResize, setIsDraggingHeaderResize] = useState(false);
   const [containerWidth, setContainerWidth] = useState(1400); // Track container width for proper sizing
 
   // Calculate timeline width
@@ -127,6 +128,32 @@ export const Timeline: React.FC = () => {
 
       setPlayhead(time);
     }
+  };
+
+  // Handle track header resize drag
+  const handleHeaderResizeMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsDraggingHeaderResize(true);
+
+    const startX = e.clientX;
+    const startWidth = trackHeaderWidth;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const deltaX = e.clientX - startX;
+      const newWidth = startWidth + deltaX;
+
+      // setTrackHeaderWidth already enforces min/max constraints (100-400)
+      useAppStore.getState().setTrackHeaderWidth(newWidth);
+    };
+
+    const handleMouseUp = () => {
+      setIsDraggingHeaderResize(false);
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
   };
 
   // Format time for display - converts relative seconds to absolute timestamp (local time)
@@ -478,7 +505,19 @@ export const Timeline: React.FC = () => {
             {/* Time ruler - matches track layout with sticky left spacer */}
             <div className="flex border-b border-gray-700">
               {/* Empty spacer to match track headers - sticky so it stays visible */}
-              <div className="w-48 flex-shrink-0 bg-gray-900 border-r border-gray-700 sticky left-0 z-30" />
+              <div
+                className="flex-shrink-0 bg-gray-900 border-r border-gray-700 sticky left-0 z-30 relative"
+                style={{ width: `${trackHeaderWidth}px` }}
+              >
+                {/* Resize handle - draggable vertical bar */}
+                <div
+                  className={`absolute right-0 top-0 bottom-0 w-1 cursor-col-resize z-40 transition-colors ${
+                    isDraggingHeaderResize ? 'bg-blue-500' : 'hover:bg-blue-400 bg-transparent'
+                  }`}
+                  onMouseDown={handleHeaderResizeMouseDown}
+                  title="Drag to resize track headers"
+                />
+              </div>
 
               {/* Actual time ruler that scrolls - distinct shade to show timeline area */}
               <div
@@ -569,7 +608,7 @@ export const Timeline: React.FC = () => {
           {/* Navigator bar - aligned with tracks area only, not under sidebar */}
           <div className="flex">
             {/* Spacer to match track headers width */}
-            <div className="w-48 flex-shrink-0" />
+            <div className="flex-shrink-0" style={{ width: `${trackHeaderWidth}px` }} />
             {/* Navigator */}
             <div className="flex-1">
               <Navigator />
