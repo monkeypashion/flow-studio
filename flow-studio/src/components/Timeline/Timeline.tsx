@@ -510,27 +510,11 @@ export const Timeline: React.FC = () => {
             onScroll={handleScroll}
           >
             {/* Time ruler - matches track layout with sticky left spacer */}
-            <div className="sticky top-0 z-40 bg-timeline-bg border-b border-gray-700 relative">
-              {/* Actual time ruler that scrolls - distinct shade to show timeline area */}
+            <div className="sticky top-0 z-40 bg-timeline-bg border-b border-gray-700 flex">
+              {/* Empty spacer to match track headers - sticky so it stays at left edge */}
               <div
-                className="h-14 bg-gray-800 cursor-pointer"
-                style={{ width: `${timelineWidth}px` }}
-                onClick={handleTimelineClick}
-                onDoubleClick={handleTimelineClick}
-              >
-                {generateTimeMarkers()}
-              </div>
-
-              {/* Empty spacer to match track headers - OVERLAYS time ruler, positioned at scroll container's left edge */}
-              <div
-                className="bg-gray-900 border-r border-gray-700 h-14"
-                style={{
-                  width: `${trackHeaderWidth}px`,
-                  position: 'absolute',
-                  top: 0,
-                  left: `${timeline.scrollX}px`,  // Move with scroll to stay at screen left edge
-                  zIndex: 10
-                }}
+                className="bg-gray-900 border-r border-gray-700 h-14 sticky left-0 flex-shrink-0"
+                style={{ width: `${trackHeaderWidth}px`, zIndex: 50 }}
               >
                 {/* Resize handle - draggable vertical bar */}
                 <div
@@ -540,6 +524,16 @@ export const Timeline: React.FC = () => {
                   onMouseDown={handleHeaderResizeMouseDown}
                   title="Drag to resize track headers"
                 />
+              </div>
+
+              {/* Actual time ruler that scrolls - distinct shade to show timeline area */}
+              <div
+                className="h-14 bg-gray-800 cursor-pointer flex-1"
+                style={{ minWidth: `${minWidth}px` }}
+                onClick={handleTimelineClick}
+                onDoubleClick={handleTimelineClick}
+              >
+                {generateTimeMarkers()}
               </div>
             </div>
 
