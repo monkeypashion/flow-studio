@@ -527,7 +527,7 @@ export const Timeline: React.FC = () => {
             <div className="flex border-b border-gray-700 sticky top-0 z-40 bg-timeline-bg">
               {/* Empty spacer to match track headers - sticky so it stays visible */}
               <div
-                className="flex-shrink-0 bg-gray-900 border-r border-gray-700 sticky left-0 relative h-14"
+                className="flex-shrink-0 bg-gray-900 border-r border-gray-700 sticky left-0 h-14"
                 style={{ width: `${trackHeaderWidth}px`, zIndex: 100 }}
               >
                 {/* Resize handle - draggable vertical bar */}
