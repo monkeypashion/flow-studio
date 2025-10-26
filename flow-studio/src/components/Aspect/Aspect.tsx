@@ -51,7 +51,7 @@ export const Aspect: React.FC<AspectProps> = ({
               }`}
               style={{ width: `${trackHeaderWidth}px` }}
             >
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between min-w-0">
                 <div className="flex items-center space-x-2 flex-1 min-w-0">
                   {/* Expand/Collapse button */}
                   <button
@@ -115,7 +115,10 @@ export const Aspect: React.FC<AspectProps> = ({
               {/* Aspect type badge */}
               {aspect.aspectType && (
                 <div className="mt-0.5">
-                  <span className="text-[10px] text-gray-600 bg-gray-900 px-1.5 py-0.5 rounded">
+                  <span
+                    className="text-[10px] text-gray-600 bg-gray-900 px-1.5 py-0.5 rounded block truncate max-w-full"
+                    title={aspect.aspectType}
+                  >
                     {aspect.aspectType}
                   </span>
                 </div>

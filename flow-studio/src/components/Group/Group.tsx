@@ -43,12 +43,12 @@ export const Group: React.FC<GroupProps> = ({
               }`}
               style={{ width: `${trackHeaderWidth}px` }}
             >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2">
+              <div className="flex items-center justify-between min-w-0">
+                <div className="flex items-center space-x-2 min-w-0 flex-1">
                   {/* Expand/Collapse button */}
                   <button
                     onClick={() => toggleGroupExpanded(group.id)}
-                    className="p-1 hover:bg-gray-700 rounded transition-colors"
+                    className="p-1 hover:bg-gray-700 rounded transition-colors flex-shrink-0"
                   >
                     <svg
                       className={`w-4 h-4 text-gray-400 transition-transform ${
@@ -68,7 +68,7 @@ export const Group: React.FC<GroupProps> = ({
                   {/* Visibility toggle button */}
                   <button
                     onClick={() => toggleGroupVisible(group.id)}
-                    className="p-1 hover:bg-gray-700 rounded transition-colors"
+                    className="p-1 hover:bg-gray-700 rounded transition-colors flex-shrink-0"
                     title={group.visible ? 'Hide asset' : 'Show asset'}
                   >
                     {group.visible ? (
@@ -97,7 +97,8 @@ export const Group: React.FC<GroupProps> = ({
                     type="text"
                     value={group.name}
                     onChange={(e) => updateGroup(group.id, { name: e.target.value })}
-                    className="bg-transparent text-sm font-semibold text-gray-200 outline-none border-b border-transparent hover:border-gray-600 focus:border-blue-500 transition-colors"
+                    className="bg-transparent text-sm font-semibold text-gray-200 outline-none border-b border-transparent hover:border-gray-600 focus:border-blue-500 transition-colors min-w-0 truncate flex-1"
+                    title={group.name}
                   />
                 </div>
 
