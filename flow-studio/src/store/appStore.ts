@@ -1527,23 +1527,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
     // Ensure minimum 1 second duration
     const validDuration = Math.max(1, duration);
 
-    // Calculate zoom to fit the entire duration in the visible screen
-    // This matches what Navigator does when viewport = full duration
-    // Get timeline container width (approximation - actual width calculated in browser)
-    const timelineContainer = typeof document !== 'undefined'
-      ? document.querySelector('.hide-scrollbar') as HTMLElement
-      : null;
-
-    // Use dynamic track header width from state
-    const trackHeaderWidth = get().trackHeaderWidth;
-    const containerWidth = timelineContainer?.clientWidth || (typeof window !== 'undefined' ? window.innerWidth - trackHeaderWidth : 1200);
-    const availableWidth = Math.max(100, containerWidth - trackHeaderWidth); // Safety: ensure positive width
-
-    // Calculate zoom: pixels per second needed to fit entire duration in screen
-    let newZoom = availableWidth / validDuration;
-
-    // Clamp to reasonable range (allow very low zoom for narrow windows)
-    newZoom = Math.max(0.001, Math.min(200, newZoom));
+    // Don't calculate zoom here - let Timeline component's useEffect handle it
+    // The Timeline component has the accurate containerWidth state from ResizeObserver
+    // Calculating zoom here from DOM can give incorrect values if DOM hasn't rendered yet
 
     // TODO: Hybrid approach - recalculate clip positions from absolute timestamps
     // when timeline date range changes (for future refactor, see REFACTOR_REMINDER.md)
@@ -1580,7 +1566,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
         ...state.timeline,
         startTime,
         duration: validDuration,
-        zoom: newZoom,
+        // Keep current zoom - Timeline component useEffect will recalculate based on viewportDuration
         playheadPosition: 0, // Reset playhead to start
         scrollX: 0, // Reset scroll to beginning
 
