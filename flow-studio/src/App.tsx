@@ -118,7 +118,7 @@ function App() {
     };
 
     // Uncomment to add demo clips on load
-    demoClips();
+    // demoClips();
 
     return () => {
       cleanupClipboard();

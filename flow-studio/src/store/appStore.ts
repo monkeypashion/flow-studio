@@ -124,6 +124,8 @@ interface AppStore {
   renameDataJob: (jobId: string, name: string) => void;
   setActiveJob: (jobId: string | null) => void;
   toggleDataJobExpanded: (jobId: string) => void;
+  collapseAllGroupsInJob: (jobId: string) => void;
+  toggleJobVisibility: (jobId: string) => void;
   addAssetsToJob: (jobId: string, groups: Group[]) => void;
   saveDataJobsToStorage: () => void;
   loadDataJobsFromStorage: () => void;
@@ -152,6 +154,10 @@ interface AppStore {
   // Snap indicator (shows vertical line when clips align)
   snapIndicatorPosition: number | null; // Time position in seconds
   setSnapIndicator: (position: number | null) => void;
+
+  // Multi-select drag incompatibility (when trying to move/copy multiple clips across tracks)
+  isMultiSelectDragIncompatible: boolean;
+  setMultiSelectDragIncompatible: (incompatible: boolean) => void;
 
   // Progress handling
   handleProgress: (clipId: string, progress: number, state: ClipState) => void;
@@ -223,6 +229,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
   ghostClips: [],
 
   snapIndicatorPosition: null,
+
+  isMultiSelectDragIncompatible: false,
 
   // UI panels visibility
   inspectorVisible: false,
@@ -1678,6 +1686,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
   // Snap indicator
   setSnapIndicator: (position) => set(() => ({ snapIndicatorPosition: position })),
 
+  setMultiSelectDragIncompatible: (incompatible) => set(() => ({ isMultiSelectDragIncompatible: incompatible })),
+
   // Progress handling
   handleProgress: (clipId, progress, state) => {
     get().updateClip(clipId, { progress, state });
@@ -2029,7 +2039,23 @@ export const useAppStore = create<AppStore>((set, get) => ({
   },
 
   setActiveJob: (jobId) => {
-    set({ activeJobId: jobId });
+    const previousJobId = get().activeJobId;
+
+    set((state) => ({
+      activeJobId: jobId,
+      // Collapse the previous job and expand the new job
+      dataJobs: state.dataJobs.map(job => {
+        if (job.id === previousJobId) {
+          // Collapse the previously active job
+          return { ...job, expanded: false };
+        } else if (job.id === jobId) {
+          // Expand the newly active job
+          return { ...job, expanded: true };
+        }
+        return job;
+      })
+    }));
+
     // Clear selection when switching jobs
     get().clearSelection();
   },
@@ -2042,6 +2068,61 @@ export const useAppStore = create<AppStore>((set, get) => ({
           : job
       )
     }));
+  },
+
+  collapseAllGroupsInJob: (jobId) => {
+    set((state) => ({
+      dataJobs: state.dataJobs.map(job =>
+        job.id === jobId
+          ? {
+              ...job,
+              groups: job.groups.map(group => ({
+                ...group,
+                expanded: false,
+                aspects: group.aspects.map(aspect => ({
+                  ...aspect,
+                  expanded: false
+                }))
+              }))
+            }
+          : job
+      )
+    }));
+  },
+
+  toggleJobVisibility: (jobId) => {
+    set((state) => {
+      const job = state.dataJobs.find(j => j.id === jobId);
+      if (!job) return state;
+
+      // Determine if we should show or hide based on first group's visibility
+      const shouldShow = job.groups.length > 0 ? !job.groups[0].visible : true;
+
+      return {
+        dataJobs: state.dataJobs.map(j =>
+          j.id === jobId
+            ? {
+                ...j,
+                groups: j.groups.map(group => ({
+                  ...group,
+                  visible: shouldShow,
+                  visibilityMode: 'explicit', // Explicit toggle from job level
+                  aspects: group.aspects.map(aspect => ({
+                    ...aspect,
+                    visible: shouldShow,
+                    visibilityMode: 'explicit',
+                    tracks: aspect.tracks.map(track => ({
+                      ...track,
+                      visible: shouldShow,
+                      visibilityMode: 'explicit'
+                    }))
+                  }))
+                }))
+              }
+            : j
+        )
+      };
+    });
   },
 
   addAssetsToJob: (jobId, groups) => {

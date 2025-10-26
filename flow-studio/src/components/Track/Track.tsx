@@ -141,11 +141,11 @@ export const Track: React.FC<TrackProps> = ({
   };
 
   return (
-    <div className="flex border-b border-gray-700" data-track-id={track.id}>
+    <div className={`flex border-b ${isHighlighted ? 'border-cyan-500/30' : 'border-gray-700'}`} data-track-id={track.id}>
       {/* Track header - sticky so it stays visible during horizontal scroll */}
       <div
-        className={`w-48 flex-shrink-0 border-r px-3 py-2 flex flex-col gap-2 sticky left-0 z-20 transition-colors overflow-hidden ${
-          isHighlighted ? 'bg-cyan-500/20 border-cyan-400' : 'bg-gray-800 border-gray-700'
+        className={`w-48 flex-shrink-0 border-r px-3 py-2 flex flex-col gap-2 sticky left-0 z-20 transition-colors ${
+          isHighlighted ? 'bg-cyan-500/40 border-cyan-400' : 'bg-gray-800 border-gray-700'
         }`}
         style={{ height: `${track.height}px` }}
       >
@@ -214,52 +214,6 @@ export const Track: React.FC<TrackProps> = ({
               )}
             </button>
 
-            {/* Mute button */}
-            <button
-              onClick={() => updateTrack(track.id, { muted: !track.muted })}
-              className={`p-1 rounded hover:bg-gray-700 transition-colors ${
-                track.muted ? 'text-red-400' : 'text-gray-400'
-              }`}
-              title={track.muted ? 'Unmute' : 'Mute'}
-            >
-              <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
-                {track.muted ? (
-                  <path
-                    fillRule="evenodd"
-                    d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM12.293 7.293a1 1 0 011.414 0L15 8.586l1.293-1.293a1 1 0 111.414 1.414L16.414 10l1.293 1.293a1 1 0 01-1.414 1.414L15 11.414l-1.293 1.293a1 1 0 01-1.414-1.414L13.586 10l-1.293-1.293a1 1 0 010-1.414z"
-                    clipRule="evenodd"
-                  />
-                ) : (
-                  <path
-                    fillRule="evenodd"
-                    d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM14.657 2.929a1 1 0 011.414 0A9.972 9.972 0 0119 10a9.972 9.972 0 01-2.929 7.071 1 1 0 01-1.414-1.414A7.971 7.971 0 0017 10c0-2.21-.894-4.208-2.343-5.657a1 1 0 010-1.414zm-2.829 2.828a1 1 0 011.415 0A5.983 5.983 0 0115 10a5.984 5.984 0 01-1.757 4.243 1 1 0 01-1.415-1.415A3.984 3.984 0 0013 10a3.983 3.983 0 00-1.172-2.828 1 1 0 010-1.415z"
-                    clipRule="evenodd"
-                  />
-                )}
-              </svg>
-            </button>
-
-            {/* Lock button */}
-            <button
-              onClick={() => updateTrack(track.id, { locked: !track.locked })}
-              className={`p-1 rounded hover:bg-gray-700 transition-colors ${
-                track.locked ? 'text-yellow-400' : 'text-gray-400'
-              }`}
-              title={track.locked ? 'Unlock' : 'Lock'}
-            >
-              <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
-                {track.locked ? (
-                  <path
-                    fillRule="evenodd"
-                    d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z"
-                    clipRule="evenodd"
-                  />
-                ) : (
-                  <path d="M10 2a5 5 0 00-5 5v2a2 2 0 00-2 2v5a2 2 0 002 2h10a2 2 0 002-2v-5a2 2 0 00-2-2H7V7a3 3 0 015.905-.75 1 1 0 001.937-.5A5.002 5.002 0 0010 2z" />
-                )}
-              </svg>
-            </button>
-
           </div>
         </div>
       </div>
@@ -267,7 +221,7 @@ export const Track: React.FC<TrackProps> = ({
       {/* Track content area with clips */}
       <div
         ref={trackRef}
-        className={`relative flex-1 z-0 transition-colors ${isHighlighted ? 'bg-cyan-500/10' : 'bg-track-bg'}`}
+        className={`relative flex-1 z-0 transition-colors ${isHighlighted ? 'bg-cyan-500/40' : 'bg-track-bg'}`}
         style={{ height: `${track.height}px`, width: `${width}px` }}
         onClick={handleTrackClick}
         onDoubleClick={handleDoubleClick}

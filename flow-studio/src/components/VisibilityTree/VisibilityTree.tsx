@@ -11,6 +11,8 @@ export const VisibilityTree: React.FC = () => {
     renameDataJob,
     setActiveJob,
     toggleDataJobExpanded,
+    collapseAllGroupsInJob,
+    toggleJobVisibility,
     toggleGroupExpanded,
     toggleGroupVisible,
     removeGroup,
@@ -190,6 +192,39 @@ export const VisibilityTree: React.FC = () => {
                 </svg>
               </button>
 
+              {/* Visibility toggle button */}
+              <button
+                onClick={() => toggleJobVisibility(job.id)}
+                className="p-0.5 hover:bg-gray-700 rounded transition-colors flex-shrink-0 mr-1.5"
+                title={
+                  job.groups.length > 0 && job.groups[0].visible
+                    ? job.groups[0].visibilityMode === 'implicit'
+                      ? 'Hide all assets (implicit)'
+                      : 'Hide all assets'
+                    : 'Show all assets'
+                }
+              >
+                {job.groups.length > 0 && job.groups[0].visible ? (
+                  <svg
+                    className={`w-3.5 h-3.5 ${
+                      job.groups[0].visibilityMode === 'implicit'
+                        ? 'text-gray-500 opacity-60'
+                        : 'text-gray-400'
+                    }`}
+                    fill="currentColor"
+                    viewBox="0 0 20 20"
+                  >
+                    <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
+                    <path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" />
+                  </svg>
+                ) : (
+                  <svg className="w-3.5 h-3.5 text-gray-600" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M3.707 2.293a1 1 0 00-1.414 1.414l14 14a1 1 0 001.414-1.414l-1.473-1.473A10.014 10.014 0 0019.542 10C18.268 5.943 14.478 3 10 3a9.958 9.958 0 00-4.512 1.074l-1.78-1.781zm4.261 4.26l1.514 1.515a2.003 2.003 0 012.45 2.45l1.514 1.514a4 4 0 00-5.478-5.478z" clipRule="evenodd" />
+                    <path d="M12.454 16.697L9.75 13.992a4 4 0 01-3.742-3.741L2.335 6.578A9.98 9.98 0 00.458 10c1.274 4.057 5.065 7 9.542 7 .847 0 1.669-.105 2.454-.303z" />
+                  </svg>
+                )}
+              </button>
+
               {/* Job name */}
               {editingJobId === job.id ? (
                 <input
@@ -207,14 +242,26 @@ export const VisibilityTree: React.FC = () => {
               ) : (
                 <>
                   <button
-                    onClick={() => setActiveJob(job.id)}
+                    onClick={() => {
+                      if (activeJobId === job.id) {
+                        // Job is already active, toggle visibility
+                        toggleJobVisibility(job.id);
+                      } else {
+                        // Job is not active, just load it
+                        setActiveJob(job.id);
+                      }
+                    }}
                     className="flex-1 text-left min-w-0"
                   >
                     <span
                       className={`text-xs font-semibold truncate block ${
                         activeJobId === job.id ? 'text-blue-400' : 'text-gray-200'
                       }`}
-                      title={job.name}
+                      title={
+                        activeJobId === job.id
+                          ? `${job.name} (click to toggle visibility)`
+                          : `${job.name} (click to load job)`
+                      }
                     >
                       {job.name}
                     </span>
@@ -222,6 +269,16 @@ export const VisibilityTree: React.FC = () => {
 
                   {/* Job actions (show on hover) */}
                   <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                    {/* Collapse all assets button */}
+                    <button
+                      onClick={() => collapseAllGroupsInJob(job.id)}
+                      className="p-0.5 hover:bg-gray-700 rounded transition-colors"
+                      title="Collapse all assets"
+                    >
+                      <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                      </svg>
+                    </button>
                     <button
                       onClick={() => setAssetPickerJobId(job.id)}
                       className="p-0.5 hover:bg-gray-700 rounded transition-colors"
@@ -259,15 +316,21 @@ export const VisibilityTree: React.FC = () => {
               job.groups
                 .filter(group => !showOnlyVisible || group.visible) // Filter if showOnlyVisible is enabled
                 .sort((a, b) => a.index - b.index)
-                .map((group) => (
-                  <div key={group.id} className="ml-2">
-                    {/* Group/Asset row */}
-                    <div
-                      className="flex items-center px-2 py-1.5 hover:bg-gray-750 transition-colors group"
-                      // Disabled for simplicity - only track hover is active
-                      // onMouseEnter={() => setHoveredItem({ type: 'group', id: group.id })}
-                      // onMouseLeave={() => setHoveredItem(null)}
-                    >
+                .map((group) => {
+                  const isGroupSelected = selectedItem?.type === 'group' && selectedItem.id === group.id;
+                  return (
+                    <div key={group.id} className="ml-2">
+                      {/* Group/Asset row */}
+                      <div
+                        className={`flex items-center px-2 py-1.5 transition-colors group border-l-2 ${
+                          isGroupSelected
+                            ? 'bg-cyan-500/10 border-cyan-400'
+                            : 'hover:bg-gray-750 border-transparent'
+                        }`}
+                        // Disabled for simplicity - only track hover is active
+                        // onMouseEnter={() => setHoveredItem({ type: 'group', id: group.id })}
+                        // onMouseLeave={() => setHoveredItem(null)}
+                      >
                       {/* Expand/collapse button */}
                       <button
                         onClick={() => toggleGroupExpanded(group.id)}
@@ -333,10 +396,18 @@ export const VisibilityTree: React.FC = () => {
                         className={`text-xs font-semibold flex-1 min-w-0 truncate cursor-pointer hover:text-cyan-400 transition-colors ${
                           group.visible ? 'text-gray-200' : 'text-gray-600'
                         }`}
-                        title={`${group.name} (click to select and scroll to)`}
+                        title={`${group.name} (click to select, scroll to, and toggle visibility)`}
                         onClick={() => {
-                          setSelectedItem({ type: 'group', id: group.id });
-                          scrollToElement('group', group.id);
+                          // Toggle visibility
+                          toggleGroupVisible(group.id);
+
+                          // Handle selection
+                          if (selectedItem?.type === 'group' && selectedItem.id === group.id) {
+                            setSelectedItem(null); // Deselect if already selected
+                          } else {
+                            setSelectedItem({ type: 'group', id: group.id });
+                            scrollToElement('group', group.id);
+                          }
                         }}
                       >
                         {group.name}
@@ -359,15 +430,21 @@ export const VisibilityTree: React.FC = () => {
                       group.aspects
                         .filter(aspect => !showOnlyVisible || aspect.visible) // Filter if showOnlyVisible is enabled
                         .sort((a, b) => a.index - b.index)
-                        .map((aspect) => (
-                          <div key={aspect.id}>
-                            {/* Aspect row */}
-                            <div
-                              className="flex items-center px-2 py-1 hover:bg-gray-750 transition-colors group pl-6"
-                              // Disabled for simplicity - only track hover is active
-                              // onMouseEnter={() => setHoveredItem({ type: 'aspect', id: aspect.id })}
-                              // onMouseLeave={() => setHoveredItem(null)}
-                            >
+                        .map((aspect) => {
+                          const isAspectSelected = selectedItem?.type === 'aspect' && selectedItem.id === aspect.id;
+                          return (
+                            <div key={aspect.id}>
+                              {/* Aspect row */}
+                              <div
+                                className={`flex items-center px-2 py-1 transition-colors group pl-6 border-l-2 ${
+                                  isAspectSelected
+                                    ? 'bg-cyan-500/10 border-cyan-400'
+                                    : 'hover:bg-gray-750 border-transparent'
+                                }`}
+                                // Disabled for simplicity - only track hover is active
+                                // onMouseEnter={() => setHoveredItem({ type: 'aspect', id: aspect.id })}
+                                // onMouseLeave={() => setHoveredItem(null)}
+                              >
                               {/* Expand/collapse button */}
                               <button
                                 onClick={() => toggleAspectExpanded(aspect.id)}
@@ -424,10 +501,18 @@ export const VisibilityTree: React.FC = () => {
                                 className={`text-xs font-medium flex-1 min-w-0 truncate cursor-pointer hover:text-cyan-400 transition-colors ${
                                   aspect.visible ? 'text-gray-300' : 'text-gray-600'
                                 }`}
-                                title={`${aspect.name} (click to select and scroll to)`}
+                                title={`${aspect.name} (click to select, scroll to, and toggle visibility)`}
                                 onClick={() => {
-                                  setSelectedItem({ type: 'aspect', id: aspect.id });
-                                  scrollToElement('aspect', aspect.id);
+                                  // Toggle visibility
+                                  toggleAspectVisible(aspect.id);
+
+                                  // Handle selection
+                                  if (selectedItem?.type === 'aspect' && selectedItem.id === aspect.id) {
+                                    setSelectedItem(null); // Deselect if already selected
+                                  } else {
+                                    setSelectedItem({ type: 'aspect', id: aspect.id });
+                                    scrollToElement('aspect', aspect.id);
+                                  }
                                 }}
                               >
                                 {aspect.name}
@@ -441,11 +526,12 @@ export const VisibilityTree: React.FC = () => {
                                 .sort((a, b) => a.index - b.index)
                                 .map((track) => {
                                   const isThisTrackHovered = hoveredItem?.type === 'track' && hoveredItem.id === track.id;
+                                  const isThisTrackSelected = selectedItem?.type === 'track' && selectedItem.id === track.id;
                                   return (
                                     <div
                                       key={track.id}
                                       className={`flex items-center px-2 py-1 transition-colors group pl-10 ${
-                                        isThisTrackHovered
+                                        isThisTrackSelected || isThisTrackHovered
                                           ? 'bg-cyan-500/10 border-l-2 border-cyan-400'
                                           : 'hover:bg-gray-750 border-l-2 border-transparent'
                                       }`}
@@ -465,7 +551,7 @@ export const VisibilityTree: React.FC = () => {
                                           fill="currentColor"
                                           viewBox="0 0 20 20"
                                         >
-                                          <path d="M10 12a2 0 100-4 2 2 0 000 4z" />
+                                          <path d="M10 12a2 2 0 1 0 0-4 2 2 0 0 0 0 4z" />
                                           <path
                                             fillRule="evenodd"
                                             d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z"
@@ -489,10 +575,18 @@ export const VisibilityTree: React.FC = () => {
                                       className={`text-xs flex-1 min-w-0 truncate cursor-pointer hover:text-cyan-400 transition-colors ${
                                         track.visible ? 'text-gray-400' : 'text-gray-600'
                                       }`}
-                                      title={`${track.name} (click to select and scroll to)`}
+                                      title={`${track.name} (click to select, scroll to, and toggle visibility)`}
                                       onClick={() => {
-                                        setSelectedItem({ type: 'track', id: track.id });
-                                        scrollToElement('track', track.id);
+                                        // Toggle visibility
+                                        toggleTrackVisible(track.id);
+
+                                        // Handle selection
+                                        if (selectedItem?.type === 'track' && selectedItem.id === track.id) {
+                                          setSelectedItem(null); // Deselect if already selected
+                                        } else {
+                                          setSelectedItem({ type: 'track', id: track.id });
+                                          scrollToElement('track', track.id);
+                                        }
                                       }}
                                     >
                                       {track.name}
@@ -501,9 +595,11 @@ export const VisibilityTree: React.FC = () => {
                                 );
                               })}
                           </div>
-                        ))}
+                        );
+                      })}
                   </div>
-                ))}
+                );
+              })}
           </div>
         ))}
       </div>

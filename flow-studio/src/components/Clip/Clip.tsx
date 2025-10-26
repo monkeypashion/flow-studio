@@ -32,12 +32,15 @@ export const Clip: React.FC<ClipProps> = ({
     getTrack,
     setGhostClips,
     setSnapIndicator,
+    isMultiSelectDragIncompatible,
+    setMultiSelectDragIncompatible,
   } = useAppStore();
 
   // Local state
   const [dragType, setDragType] = useState<'move' | 'resize-left' | 'resize-right' | null>(null);
   const [isCopying, setIsCopying] = useState(false);
   const [isIncompatibleTarget, setIsIncompatibleTarget] = useState(false);
+  const [isShowingCrossTrackGhost, setIsShowingCrossTrackGhost] = useState(false);
 
   // Refs for drag tracking
   const hasMoved = useRef(false); // Use ref instead of state to avoid effect re-runs
@@ -48,7 +51,8 @@ export const Clip: React.FC<ClipProps> = ({
     startTrackIndex: 0,
     startTrackPixelTop: 0, // Store the actual pixel position
     startTrackPixelLeft: 0, // Store the actual horizontal position
-    currentTrackId: '',
+    sourceTrackId: '', // Original track where drag started (never changes during drag)
+    currentTrackId: '', // Current target track during drag
     sourceUnit: undefined as string | undefined,
     sourceDataType: undefined as string | undefined,
     isMultiSelect: false,
@@ -249,7 +253,8 @@ export const Clip: React.FC<ClipProps> = ({
       startTrackIndex: trackIndex,
       startTrackPixelTop: initialGhostTop,
       startTrackPixelLeft: initialGhostLeft, // This now includes the header adjustment
-      currentTrackId: clip.trackId,
+      sourceTrackId: clip.trackId, // Original track (never changes during drag)
+      currentTrackId: clip.trackId, // Current target track (updates during drag)
       sourceUnit: sourceTrack?.unit,
       sourceDataType: sourceTrack?.dataType,
       isMultiSelect,
@@ -333,14 +338,25 @@ export const Clip: React.FC<ClipProps> = ({
       }
 
       if (dragType === 'move') {
-        // Calculate target track (use cached allTracks)
-        const trackHeight = 80;
-        const trackOffset = Math.round(deltaY / trackHeight);
-        const targetTrackIndex = Math.min(
-          Math.max(0, dragInfo.current.startTrackIndex + trackOffset),
-          allTracks.length - 1
-        );
-        const targetTrack = allTracks[targetTrackIndex];
+        // Instead of calculating by height offset, find the actual track element under the mouse
+        // This handles asset/aspect headers which have different heights and aren't valid drop targets
+        const mouseY = e.clientY;
+        let targetTrackElement: HTMLElement | null = null;
+        let targetTrackIndex = dragInfo.current.startTrackIndex;
+
+        // Find all track lanes and check which one the mouse is over
+        const trackLanes = document.querySelectorAll('[data-track-lane="true"]');
+        for (let i = 0; i < trackLanes.length; i++) {
+          const lane = trackLanes[i] as HTMLElement;
+          const rect = lane.getBoundingClientRect();
+          if (mouseY >= rect.top && mouseY <= rect.bottom) {
+            targetTrackElement = lane;
+            targetTrackIndex = parseInt(lane.getAttribute('data-track-index') || '0', 10);
+            break;
+          }
+        }
+
+        const targetTrack = targetTrackElement ? allTracks[targetTrackIndex] : null;
 
         // Calculate new time position
         let newStart = dragInfo.current.startTimeRange.start + deltaTime;
@@ -399,6 +415,41 @@ export const Clip: React.FC<ClipProps> = ({
         // Calculate snapped deltaTime for ghost positioning
         // This ensures ghosts snap to other clips just like the actual clip would
         const snappedDeltaTime = newStart - dragInfo.current.startTimeRange.start;
+
+        // Check if mouse is over a non-track area (asset/aspect header)
+        if (!targetTrack) {
+          setIsIncompatibleTarget(true);
+          document.body.style.cursor = 'not-allowed';
+
+          // If multi-select, set the global incompatibility flag so all selected clips show feedback
+          if (dragInfo.current.isMultiSelect) {
+            setMultiSelectDragIncompatible(true);
+          }
+
+          // Show ghost at cursor position to keep it fixed to mouse
+          const TRACK_HEADER_WIDTH = 192;
+          const newGhostLeft = newStart * zoom + TRACK_HEADER_WIDTH;
+
+          setGhostClips([{
+            clipId: clip.id,
+            left: newGhostLeft,
+            width: width,
+            top: mouseY - (timelineContainer?.getBoundingClientRect().top || 0),
+            isIncompatible: true,
+          }]);
+          return; // Don't process further
+        } else {
+          // Over a valid track, clear incompatible state from asset/aspect header
+          // The compatibility will be re-evaluated based on unit/data type and cross-track checks below
+          if (isIncompatibleTarget) {
+            setIsIncompatibleTarget(false);
+          }
+          // For multi-select, the incompatibility flag will be set again below if it's a cross-track move
+          // For same-track moves, we want to clear it here
+          if (dragInfo.current.isMultiSelect) {
+            setMultiSelectDragIncompatible(false);
+          }
+        }
 
         // Update copy state based on current key state during drag (after snapping is calculated)
         if (hasMoved.current) {
@@ -463,39 +514,116 @@ export const Clip: React.FC<ClipProps> = ({
           document.body.style.cursor = 'move';
         }
 
-        // Update position (unless copying or incompatible)
-        // IMPORTANT: Don't move actual clips when copying - only show ghosts
-        // Use ref instead of state to avoid race conditions
+        // Update position during drag
+        // IMPORTANT: For cross-track moves, show ghost instead of actually moving
+        // This prevents component unmount/remount which would break the drag
         if (!dragInfo.current.isCopyMode && targetTrack && isCompatible) {
-          if (dragInfo.current.isMultiSelect) {
-            // Move all selected clips together, passing original positions
-            moveSelectedClips(
-              deltaTime,
-              targetTrack.id !== clip.trackId ? targetTrack.id : undefined,
-              dragInfo.current.originalPositions
-            );
+          const isCrossTrackMove = targetTrack.id !== dragInfo.current.sourceTrackId;
+
+          // Prevent multi-select from moving across tracks (too complex with different units/data types)
+          if (isCrossTrackMove && dragInfo.current.isMultiSelect) {
+            setIsIncompatibleTarget(true);
+            setMultiSelectDragIncompatible(true);
+            document.body.style.cursor = 'not-allowed';
+            setGhostClips([]);
+            return;
+          } else if (dragInfo.current.isMultiSelect) {
+            // Multi-select horizontal move is allowed, clear the incompatible flag
+            setMultiSelectDragIncompatible(false);
+          }
+
+          if (isCrossTrackMove) {
+            // Single clip moving to different track - show ghost, don't actually move yet
             dragInfo.current.currentTrackId = targetTrack.id;
+            setIsShowingCrossTrackGhost(true);
+
+            // Show ghost at target position
+            const targetTrackElement = document.querySelector(`[data-track-index="${targetTrackIndex}"]`) as HTMLElement;
+            let targetTop = dragInfo.current.startTrackPixelTop;
+            if (targetTrackElement && timelineContainer) {
+              const trackRect = targetTrackElement.getBoundingClientRect();
+              const timelineRect = timelineContainer.getBoundingClientRect();
+              targetTop = trackRect.top - timelineRect.top + 4;
+            }
+
+            const TRACK_HEADER_WIDTH = 192;
+            const newGhostLeft = newStart * zoom + TRACK_HEADER_WIDTH;
+
+            setGhostClips([{
+              clipId: clip.id,
+              left: newGhostLeft,
+              width: width,
+              top: targetTop,
+              isIncompatible: false,
+            }]);
           } else {
-            // Single clip move
-            if (targetTrack.id !== dragInfo.current.currentTrackId) {
-              // Move to different track
-              moveClip(clip.id, targetTrack.id, { start: newStart, end: newEnd });
-              dragInfo.current.currentTrackId = targetTrack.id;
+            // On source track - show ghost (consistent with cross-track moves)
+            dragInfo.current.currentTrackId = targetTrack.id;
+            setIsShowingCrossTrackGhost(false);
+
+            // Show ghost(s) at new time position on same track(s)
+            if (dragInfo.current.isMultiSelect) {
+              // Show ghosts for all selected clips
+              const ghosts = createGhostClipsForSelection(dragInfo.current.startTrackIndex, dragInfo.current.startTrackIndex, snappedDeltaTime, false);
+              setGhostClips(ghosts);
             } else {
-              // Just update time on same track
-              updateClip(clip.id, { timeRange: { start: newStart, end: newEnd } });
+              // Show single ghost
+              const TRACK_HEADER_WIDTH = 192;
+              const newGhostLeft = newStart * zoom + TRACK_HEADER_WIDTH;
+
+              setGhostClips([{
+                clipId: clip.id,
+                left: newGhostLeft,
+                width: width,
+                top: dragInfo.current.startTrackPixelTop,
+                isIncompatible: false,
+              }]);
             }
           }
-          setGhostClips([]);
         } else if (dragInfo.current.isCopyMode) {
+          // If over non-track area, show incompatible
+          if (!targetTrack) {
+            setIsIncompatibleTarget(true);
+            document.body.style.cursor = 'not-allowed';
+
+            // If multi-select, set the global incompatibility flag so all selected clips show feedback
+            if (dragInfo.current.isMultiSelect) {
+              setMultiSelectDragIncompatible(true);
+            }
+
+            // Show ghost at cursor position
+            const TRACK_HEADER_WIDTH = 192;
+            const newGhostLeft = newStart * zoom + TRACK_HEADER_WIDTH;
+
+            setGhostClips([{
+              clipId: clip.id,
+              left: newGhostLeft,
+              width: width,
+              top: mouseY - (timelineContainer?.getBoundingClientRect().top || 0),
+              isIncompatible: true,
+            }]);
+            return;
+          }
+
+          const isCrossTrackCopy = targetTrackIndex !== dragInfo.current.startTrackIndex;
+
+          // Prevent multi-select from copying across tracks
+          if (isCrossTrackCopy && dragInfo.current.isMultiSelect) {
+            setIsIncompatibleTarget(true);
+            setMultiSelectDragIncompatible(true);
+            document.body.style.cursor = 'not-allowed';
+            setGhostClips([]);
+            return;
+          } else if (dragInfo.current.isMultiSelect) {
+            // Multi-select horizontal copy is allowed, clear the incompatible flag
+            setMultiSelectDragIncompatible(false);
+          }
+
           // Update ghost clips during drag using snapped deltaTime
           if (dragInfo.current.isMultiSelect) {
             const ghosts = createGhostClipsForSelection(targetTrackIndex, dragInfo.current.startTrackIndex, snappedDeltaTime, !isCompatible);
             setGhostClips(ghosts);
           } else {
-            // Find the target track element using data attribute (cached container)
-            const targetTrackElement = document.querySelector(`[data-track-index="${targetTrackIndex}"]`) as HTMLElement;
-
             let targetTop = dragInfo.current.startTrackPixelTop;
             if (targetTrackElement && timelineContainer) {
               const trackRect = targetTrackElement.getBoundingClientRect();
@@ -581,23 +709,181 @@ export const Clip: React.FC<ClipProps> = ({
       }
     };
 
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        // Cancel the drag and revert to original position
+        setDragType(null);
+        setIsCopying(false);
+        setIsIncompatibleTarget(false);
+        setIsShowingCrossTrackGhost(false);
+        hasMoved.current = false;
+        setGhostClips([]);
+        setSnapIndicator(null);
+        setMultiSelectDragIncompatible(false);
+
+        // Reset cursor
+        document.body.style.cursor = '';
+
+        // Clips are already at their original positions (we never moved them during drag)
+        // So no need to explicitly revert
+
+        if (onDragEnd) {
+          onDragEnd();
+        }
+
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+
     const handleMouseUp = (e: MouseEvent) => {
+      // Handle move on drop - perform actual move now (not during drag)
+      if (dragType === 'move' && !dragInfo.current.isCopyMode) {
+        const deltaX = e.clientX - dragInfo.current.startX;
+        const deltaTime = deltaX / zoom;
+
+        // Use DOM-based track detection (same as during drag)
+        // This handles asset/aspect headers which have different heights
+        const mouseY = e.clientY;
+        let targetTrackIndex = dragInfo.current.startTrackIndex;
+        let targetTrack = null;
+
+        const trackLanes = document.querySelectorAll('[data-track-lane="true"]');
+        for (let i = 0; i < trackLanes.length; i++) {
+          const lane = trackLanes[i] as HTMLElement;
+          const rect = lane.getBoundingClientRect();
+          if (mouseY >= rect.top && mouseY <= rect.bottom) {
+            targetTrackIndex = parseInt(lane.getAttribute('data-track-index') || '0', 10);
+            targetTrack = allTracks[targetTrackIndex];
+            break;
+          }
+        }
+
+        // If not over any track (e.g., over asset/aspect header), don't perform the move
+        if (!targetTrack) {
+          setDragType(null);
+          setIsCopying(false);
+          setIsIncompatibleTarget(false);
+          setIsShowingCrossTrackGhost(false);
+          setGhostClips([]);
+          setSnapIndicator(null);
+          setMultiSelectDragIncompatible(false);
+          document.body.style.cursor = '';
+          if (onDragEnd) {
+            onDragEnd();
+          }
+          return;
+        }
+
+        if (targetTrack) {
+          const isCrossTrackMove = targetTrack.id !== dragInfo.current.sourceTrackId;
+
+          // Don't allow multi-select cross-track moves
+          if (isCrossTrackMove && dragInfo.current.isMultiSelect) {
+            return;
+          }
+          // Calculate final position with snapping
+          let newStart = dragInfo.current.startTimeRange.start + deltaTime;
+          const duration = dragInfo.current.startTimeRange.end - dragInfo.current.startTimeRange.start;
+          let newEnd = newStart + duration;
+
+          // Apply snapping
+          const excludeIds = dragInfo.current.isMultiSelect ? getSelectedClips().map(c => c.id) : [clip.id];
+          const snapStart = applySnapping(newStart, excludeIds);
+          const snapEnd = applySnapping(newEnd, excludeIds);
+
+          if (snapStart.didSnap && snapEnd.didSnap) {
+            const startDist = Math.abs(newStart - snapStart.snappedTime);
+            const endDist = Math.abs(newEnd - snapEnd.snappedTime);
+            if (startDist <= endDist) {
+              newStart = snapStart.snappedTime;
+              newEnd = newStart + duration;
+            } else {
+              newEnd = snapEnd.snappedTime;
+              newStart = newEnd - duration;
+            }
+          } else if (snapStart.didSnap) {
+            newStart = snapStart.snappedTime;
+            newEnd = newStart + duration;
+          } else if (snapEnd.didSnap) {
+            newEnd = snapEnd.snappedTime;
+            newStart = newEnd - duration;
+          } else if (timeline.gridSnap) {
+            newStart = Math.round(newStart / timeline.snapInterval) * timeline.snapInterval;
+            newEnd = newStart + duration;
+          }
+
+          newStart = Math.max(0, newStart);
+
+          // Check compatibility
+          const unitCompatible = !dragInfo.current.sourceUnit ||
+                                !targetTrack.unit ||
+                                dragInfo.current.sourceUnit === targetTrack.unit;
+          const dataTypeCompatible = !dragInfo.current.sourceDataType ||
+                                    !targetTrack.dataType ||
+                                    dragInfo.current.sourceDataType === targetTrack.dataType;
+          const isCompatible = unitCompatible && dataTypeCompatible;
+
+          if (isCompatible) {
+            if (isCrossTrackMove) {
+              // Cross-track move
+              moveClip(clip.id, targetTrack.id, { start: newStart, end: newEnd });
+            } else if (dragInfo.current.isMultiSelect) {
+              // Multi-select horizontal move (all clips on their own tracks)
+              moveSelectedClips(deltaTime, undefined, dragInfo.current.originalPositions);
+            } else {
+              // Single clip horizontal move (same track)
+              updateClip(clip.id, { timeRange: { start: newStart, end: newEnd } });
+            }
+          }
+        }
+      }
+
       // Handle copy on drop - use ref to check copy mode
       if (dragType === 'move' && dragInfo.current.isCopyMode) {
         const deltaX = e.clientX - dragInfo.current.startX;
-        const deltaY = e.clientY - dragInfo.current.startY;
         const deltaTime = deltaX / zoom;
 
-        const trackHeight = 80;
-        const trackOffset = Math.round(deltaY / trackHeight);
-        // Use cached allTracks instead of calling getAllTracks() again
-        const targetTrackIndex = Math.min(
-          Math.max(0, dragInfo.current.startTrackIndex + trackOffset),
-          allTracks.length - 1
-        );
-        const targetTrack = allTracks[targetTrackIndex];
+        // Use DOM-based track detection (same as during drag)
+        // This handles asset/aspect headers which have different heights
+        const mouseY = e.clientY;
+        let targetTrackIndex = dragInfo.current.startTrackIndex;
+        let targetTrack = null;
+
+        const trackLanes = document.querySelectorAll('[data-track-lane="true"]');
+        for (let i = 0; i < trackLanes.length; i++) {
+          const lane = trackLanes[i] as HTMLElement;
+          const rect = lane.getBoundingClientRect();
+          if (mouseY >= rect.top && mouseY <= rect.bottom) {
+            targetTrackIndex = parseInt(lane.getAttribute('data-track-index') || '0', 10);
+            targetTrack = allTracks[targetTrackIndex];
+            break;
+          }
+        }
+
+        // If not over any track (e.g., over asset/aspect header), don't perform the copy
+        if (!targetTrack) {
+          setDragType(null);
+          setIsCopying(false);
+          setIsIncompatibleTarget(false);
+          setIsShowingCrossTrackGhost(false);
+          setGhostClips([]);
+          setSnapIndicator(null);
+          setMultiSelectDragIncompatible(false);
+          document.body.style.cursor = '';
+          if (onDragEnd) {
+            onDragEnd();
+          }
+          return;
+        }
 
         if (targetTrack) {
+          const isCrossTrackCopy = targetTrackIndex !== dragInfo.current.startTrackIndex;
+
+          // Don't allow multi-select cross-track copies
+          if (isCrossTrackCopy && dragInfo.current.isMultiSelect) {
+            return;
+          }
           // Check unit and data type compatibility before copying
           const unitCompatible = !dragInfo.current.sourceUnit ||
                                 !targetTrack.unit ||
@@ -704,9 +990,11 @@ export const Clip: React.FC<ClipProps> = ({
       setDragType(null);
       setIsCopying(false);
       setIsIncompatibleTarget(false);
+      setIsShowingCrossTrackGhost(false);
       hasMoved.current = false;
       setGhostClips([]);
       setSnapIndicator(null); // Clear snap indicator
+      setMultiSelectDragIncompatible(false); // Clear multi-select incompatible flag
       dragInfo.current.currentTrackId = clip.trackId;
       dragInfo.current.isCopyMode = false; // Reset copy mode ref
 
@@ -720,6 +1008,7 @@ export const Clip: React.FC<ClipProps> = ({
 
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
+    document.addEventListener('keydown', handleKeyDown);
 
     return () => {
       if (rafId !== null) {
@@ -727,8 +1016,16 @@ export const Clip: React.FC<ClipProps> = ({
       }
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
+      document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [dragType, isCopying, clip.id, clip.timeRange, clip.trackId, zoom, timeline, getAllTracks, getTrack, updateClip, moveClip, copyClip, moveSelectedClips, copySelectedClips, getSelectedClips, setGhostClips, setSnapIndicator, onDragEnd, trackIndex, width, createGhostClipsForSelection]);
+  // NOTE: Many dependencies are intentionally EXCLUDED to prevent effect re-runs during drag:
+  // - clip.timeRange, clip.trackId, trackIndex, width: captured at drag start, change during drag
+  // - timeline: object reference may change on store updates, but values are read live in handlers
+  // - Store functions (getAllTracks, getTrack, etc.): should be stable but may get new refs on store updates
+  // - createGhostClipsForSelection: recreated when its deps change
+  // The effect only sets up event listeners - handlers use closures to access current values
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dragType, isCopying]);
 
   return (
     <motion.div
@@ -737,10 +1034,10 @@ export const Clip: React.FC<ClipProps> = ({
         absolute rounded-md overflow-hidden
         ${dragType === 'move' && isIncompatibleTarget ? 'cursor-not-allowed' : dragType === 'move' && isCopying ? 'cursor-copy' : 'cursor-move'}
         ${getClipColor()}
-        ${clip.selected ? 'ring-4 ring-cyan-400 shadow-xl shadow-cyan-400/40' : ''}
-        ${dragType === 'move' && !isCopying && !isIncompatibleTarget ? 'opacity-75' : ''}
+        ${clip.selected && !isMultiSelectDragIncompatible ? 'ring-4 ring-cyan-400 shadow-xl shadow-cyan-400/40' : ''}
+        ${dragType === 'move' && !isCopying && !isIncompatibleTarget && !isMultiSelectDragIncompatible ? 'opacity-20' : ''}
         ${dragType === 'move' && isCopying && !isIncompatibleTarget ? 'opacity-50 ring-4 ring-green-400 shadow-lg shadow-green-400/50' : ''}
-        ${dragType === 'move' && isIncompatibleTarget ? 'opacity-50 ring-4 ring-red-500 shadow-lg shadow-red-500/50' : ''}
+        ${(dragType === 'move' && isIncompatibleTarget) || (clip.selected && isMultiSelectDragIncompatible) ? 'opacity-50 ring-4 ring-red-500 shadow-lg shadow-red-500/50' : ''}
         transition-all duration-200
       `}
       style={{
@@ -775,7 +1072,7 @@ export const Clip: React.FC<ClipProps> = ({
       )}
 
       {/* Incompatible indicator */}
-      {dragType === 'move' && isIncompatibleTarget && (
+      {((dragType === 'move' && isIncompatibleTarget) || (clip.selected && isMultiSelectDragIncompatible)) && (
         <div className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 rounded-full flex items-center justify-center shadow-lg z-20 pointer-events-none">
           <span className="text-white text-xs font-bold">✕</span>
         </div>

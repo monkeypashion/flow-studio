@@ -33,18 +33,19 @@ export const Aspect: React.FC<AspectProps> = ({
     selectedItem,
   } = useAppStore();
 
-  // Check if this aspect is selected
-  const isSelected = selectedItem?.type === 'aspect' && selectedItem.id === aspect.id;
+  // Check if this aspect is selected OR if its parent group is selected
+  const isSelected =
+    (selectedItem?.type === 'aspect' && selectedItem.id === aspect.id) ||
+    (selectedItem?.type === 'group' && groupId && selectedItem.id === groupId);
 
   return (
-    <div className={showAspects ? "border-b border-gray-750" : ""} data-aspect-id={aspect.id}>
+    <div className={showAspects ? `border-b ${isSelected ? 'border-cyan-500/30' : 'border-gray-700'}` : ""} data-aspect-id={aspect.id}>
       {/* Aspect header - only show if showAspects is true */}
       {showAspects && (
-        <div className="bg-gray-825">
-          <div className="flex items-center" style={{ width: '100%' }}>
+        <div className="flex items-stretch" style={{ width: '100%' }}>
             {/* Left side - Aspect info and controls */}
             <div className={`w-48 flex-shrink-0 border-r px-4 py-1.5 sticky left-0 z-20 transition-colors ${
-              isSelected ? 'bg-cyan-500/20 border-cyan-400' : 'bg-gray-775 border-gray-700'
+              isSelected ? 'bg-cyan-500/40 border-cyan-400' : 'bg-gray-800 border-gray-700'
             }`}>
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-2 flex-1 min-w-0">
@@ -110,7 +111,7 @@ export const Aspect: React.FC<AspectProps> = ({
               {/* Aspect type badge */}
               {aspect.aspectType && (
                 <div className="mt-0.5">
-                  <span className="text-[10px] text-gray-600 bg-gray-850 px-1.5 py-0.5 rounded">
+                  <span className="text-[10px] text-gray-600 bg-gray-900 px-1.5 py-0.5 rounded">
                     {aspect.aspectType}
                   </span>
                 </div>
@@ -119,13 +120,12 @@ export const Aspect: React.FC<AspectProps> = ({
 
             {/* Right side - Timeline header for aspect */}
             <div className={`flex-1 px-3 py-1.5 transition-colors ${
-              isSelected ? 'bg-cyan-500/10' : 'bg-gray-825'
+              isSelected ? 'bg-cyan-500/40' : 'bg-gray-800'
             }`}>
               <div className="text-[10px] text-gray-600 font-medium uppercase tracking-wide">
                 {aspect.tracks.length} {aspect.tracks.length === 1 ? 'Property' : 'Properties'}
               </div>
             </div>
-          </div>
         </div>
       )}
 
@@ -135,7 +135,7 @@ export const Aspect: React.FC<AspectProps> = ({
             {aspect.tracks.length === 0 ? (
               showAspects && (
                 <div className="flex">
-                  <div className="w-48 flex-shrink-0 bg-gray-850 border-r border-gray-700 px-4 py-3">
+                  <div className="w-48 flex-shrink-0 bg-gray-900 border-r border-gray-700 px-4 py-3">
                     <div className="text-xs text-gray-600 text-center">No properties</div>
                   </div>
                   <div className="flex-1 bg-track-bg py-3 px-3">

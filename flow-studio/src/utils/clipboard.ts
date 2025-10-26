@@ -2,6 +2,19 @@ import { useAppStore } from '../store/appStore';
 
 export const initializeClipboardListeners = () => {
   const handleKeyDown = (e: KeyboardEvent) => {
+    // Check if user is typing in an input field, textarea, or contenteditable element
+    // If so, let the browser handle the keyboard shortcuts
+    const target = e.target as HTMLElement;
+    const isInputField =
+      target.tagName === 'INPUT' ||
+      target.tagName === 'TEXTAREA' ||
+      target.isContentEditable;
+
+    if (isInputField) {
+      // Allow browser's default behavior for input fields
+      return;
+    }
+
     const store = useAppStore.getState();
 
     // Copy: Ctrl+C or Cmd+C

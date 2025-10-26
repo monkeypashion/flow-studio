@@ -31,14 +31,13 @@ export const Group: React.FC<GroupProps> = ({
   const isSelected = selectedItem?.type === 'group' && selectedItem.id === group.id;
 
   return (
-    <div className={showAssets ? "border-b-2 border-gray-800" : ""} data-group-id={group.id}>
+    <div className={showAssets ? `border-b-2 ${isSelected ? 'border-cyan-500/40' : 'border-gray-800'}` : ""} data-group-id={group.id}>
       {/* Group header - only show if showAssets is true */}
       {showAssets && (
-        <div className="bg-gray-850 border-b border-gray-700">
-          <div className="flex items-center">
+        <div className={`flex items-stretch border-b ${isSelected ? 'border-cyan-500/30' : 'border-gray-700'}`}>
             {/* Left side - Group info and controls */}
             <div className={`w-48 flex-shrink-0 border-r px-3 py-2 sticky left-0 z-20 transition-colors ${
-              isSelected ? 'bg-cyan-500/20 border-cyan-400' : 'bg-gray-800 border-gray-700'
+              isSelected ? 'bg-cyan-500/40 border-cyan-400' : 'bg-gray-800 border-gray-700'
             }`}>
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-2">
@@ -115,13 +114,12 @@ export const Group: React.FC<GroupProps> = ({
 
             {/* Right side - Timeline header for group */}
             <div className={`flex-1 px-3 py-2 transition-colors ${
-              isSelected ? 'bg-cyan-500/10' : 'bg-gray-850'
+              isSelected ? 'bg-cyan-500/40' : 'bg-gray-800'
             }`}>
               <div className="text-xs text-gray-500 font-medium">
                 {group.aspects.length} {group.aspects.length === 1 ? 'Aspect' : 'Aspects'}
               </div>
             </div>
-          </div>
         </div>
       )}
 
@@ -131,7 +129,7 @@ export const Group: React.FC<GroupProps> = ({
             {group.aspects.length === 0 ? (
               showAssets && (
                 <div className="flex">
-                  <div className="w-48 flex-shrink-0 bg-gray-850 border-r border-gray-700 px-3 py-4">
+                  <div className="w-48 flex-shrink-0 bg-gray-900 border-r border-gray-700 px-3 py-4">
                     <div className="text-xs text-gray-500 text-center">No aspects</div>
                   </div>
                   <div className="flex-1 bg-track-bg py-4 px-3">
