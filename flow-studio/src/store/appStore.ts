@@ -1483,9 +1483,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   // Timeline methods
   setZoom: (zoom) => set((state) => {
-    // Allow zoom to go very low for narrow windows/large durations, cap at 200 for zoom in
-    // Minimum of 0.001 allows extreme zoom out (1000 seconds per pixel)
-    const clampedZoom = Math.max(0.001, Math.min(200, zoom));
+    // Allow zoom to go very low for large time ranges, cap at 200 for zoom in
+    // Minimum of 0.0001 allows extreme zoom out (10000 seconds per pixel = ~2.7 hours/px)
+    const clampedZoom = Math.max(0.0001, Math.min(200, zoom));
 
     // When zoom changes, recalculate scrollX to keep the viewport aligned
     // Formula: scrollX = viewportStart × zoom

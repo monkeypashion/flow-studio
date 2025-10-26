@@ -378,7 +378,9 @@ export const Timeline: React.FC = () => {
     // Use containerWidth state which is kept up-to-date by the ResizeObserver
     const availableWidth = containerWidth - trackHeaderWidth;
     const newZoom = availableWidth / timeline.viewportDuration;
-    const clampedZoom = Math.max(0.001, Math.min(200, newZoom));
+    // Allow very low zoom for large time ranges (0.0001 = 10000 seconds per pixel = ~2.7 hours/px)
+    // Max 200 pixels/second for extreme zoom in
+    const clampedZoom = Math.max(0.0001, Math.min(200, newZoom));
 
     console.log('[ZOOM] Recalculating zoom:', {
       containerWidth,

@@ -24,7 +24,17 @@
       "Bash(curl:*)",
       "Read(//d/OneDrive/Physical Devices/Fireblade/Documents/Software Projects/MindConnect-NodeJS - CLI/**)",
       "Bash(git init:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nInitial commit: Flow Studio - Digital Time-Series Workstation\n\nDAW-style frontend for industrial time-series data visualization and manipulation.\nCore features:\n- Timeline-based track/clip interface\n- Asset/Aspect/Track hierarchy\n- View mode toggles (Assets/Aspects)\n- Hover and selection highlighting\n- Sidebar filtering\n- Data job management with MindConnect integration\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(gh:*)",
+      "Bash(env -u GITHUB_TOKEN gh repo create:*)",
+      "Read(//d/OneDrive/Physical Devices/Fireblade/Desktop/**)",
+      "Bash(git commit:*)",
+      "Bash(git push)",
+      "Bash(git config:*)",
+      "Bash(env -u GITHUB_TOKEN gh auth switch:*)",
+      "Bash(env -u GITHUB_TOKEN git push)",
+      "Bash(git checkout:*)"
     ],
     "deny": [],
     "ask": []

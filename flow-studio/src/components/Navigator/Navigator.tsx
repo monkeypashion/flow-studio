@@ -74,7 +74,8 @@ export const Navigator: React.FC = () => {
     if (!timelineContainer) {
       // Fallback: use window width minus sidebar widths
       const availableWidth = window.innerWidth - trackHeaderWidth - 192; // Subtract VisibilityTree + panels
-      return Math.max(0.001, Math.min(200, availableWidth / viewportDuration));
+      // Allow very low zoom for large time ranges (0.0001 = 10000 seconds per pixel)
+      return Math.max(0.0001, Math.min(200, availableWidth / viewportDuration));
     }
 
     // Get the actual visible width of the timeline container, minus the sticky track headers
@@ -84,8 +85,9 @@ export const Navigator: React.FC = () => {
     // zoom = available screen width / viewport duration
     const zoom = availableWidth / viewportDuration;
 
-    // Clamp to reasonable range (allow very low zoom for narrow windows/large durations)
-    return Math.max(0.001, Math.min(200, zoom));
+    // Clamp to reasonable range (allow very low zoom for large time ranges)
+    // Min 0.0001 = 10000 seconds per pixel (~2.7 hours/px), Max 200 px/second
+    return Math.max(0.0001, Math.min(200, zoom));
   };
 
   // Handle clicking on navigator bar background to jump to time
