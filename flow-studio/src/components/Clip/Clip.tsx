@@ -28,6 +28,7 @@ export const Clip: React.FC<ClipProps> = ({
     copySelectedClips,
     getSelectedClips,
     timeline,
+    trackHeaderWidth,
     getAllTracks,
     getTrack,
     setGhostClips,
@@ -119,7 +120,6 @@ export const Clip: React.FC<ClipProps> = ({
   const createGhostClipsForSelection = useCallback((targetTrackIndex: number, startTrackIndex: number, deltaTime: number, isIncompatible: boolean) => {
     const selectedClips = getSelectedClips();
     const allTracks = getAllTracks();
-    const TRACK_HEADER_WIDTH = 192;
 
     // Calculate vertical offset: how many tracks to move
     const trackOffset = targetTrackIndex - startTrackIndex;
@@ -139,7 +139,7 @@ export const Clip: React.FC<ClipProps> = ({
 
       const clipDuration = selectedClip.timeRange.end - selectedClip.timeRange.start;
       const clipWidth = clipDuration * zoom;
-      const ghostLeft = newStart * zoom + TRACK_HEADER_WIDTH;
+      const ghostLeft = newStart * zoom + trackHeaderWidth;
 
       // Apply the vertical offset to show where clip will be pasted
       // Each ghost moves by the same amount as the dragged clip
@@ -173,7 +173,7 @@ export const Clip: React.FC<ClipProps> = ({
       top: number;
       isIncompatible: boolean;
     }>;
-  }, [getSelectedClips, getAllTracks, getTrack, zoom]);
+  }, [getSelectedClips, getAllTracks, getTrack, zoom, trackHeaderWidth]);
 
   // Get clip color based on state
   const getClipColor = () => {
@@ -228,9 +228,8 @@ export const Clip: React.FC<ClipProps> = ({
 
     // Fix: Clips are positioned relative to track lanes (after headers)
     // Ghost is positioned relative to timeline container (includes headers)
-    // Track headers are 192px wide, so we need to add that offset
-    const TRACK_HEADER_WIDTH = 192;
-    let initialGhostLeft = left + TRACK_HEADER_WIDTH;
+    // Track headers are dynamic width, so we need to add that offset
+    let initialGhostLeft = left + trackHeaderWidth;
     let initialGhostTop = 0;
 
     if (trackElement && timelineContainer) {
@@ -427,8 +426,7 @@ export const Clip: React.FC<ClipProps> = ({
           }
 
           // Show ghost at cursor position to keep it fixed to mouse
-          const TRACK_HEADER_WIDTH = 192;
-          const newGhostLeft = newStart * zoom + TRACK_HEADER_WIDTH;
+          const newGhostLeft = newStart * zoom + trackHeaderWidth;
 
           setGhostClips([{
             clipId: clip.id,
@@ -480,8 +478,7 @@ export const Clip: React.FC<ClipProps> = ({
                   targetTop = trackRect.top - timelineRect.top + 4;
                 }
 
-                const TRACK_HEADER_WIDTH = 192;
-                const newGhostLeft = newStart * zoom + TRACK_HEADER_WIDTH;
+                const newGhostLeft = newStart * zoom + trackHeaderWidth;
 
                 setGhostClips([{
                   clipId: clip.id,
@@ -546,8 +543,7 @@ export const Clip: React.FC<ClipProps> = ({
               targetTop = trackRect.top - timelineRect.top + 4;
             }
 
-            const TRACK_HEADER_WIDTH = 192;
-            const newGhostLeft = newStart * zoom + TRACK_HEADER_WIDTH;
+            const newGhostLeft = newStart * zoom + trackHeaderWidth;
 
             setGhostClips([{
               clipId: clip.id,
@@ -568,8 +564,7 @@ export const Clip: React.FC<ClipProps> = ({
               setGhostClips(ghosts);
             } else {
               // Show single ghost
-              const TRACK_HEADER_WIDTH = 192;
-              const newGhostLeft = newStart * zoom + TRACK_HEADER_WIDTH;
+              const newGhostLeft = newStart * zoom + trackHeaderWidth;
 
               setGhostClips([{
                 clipId: clip.id,
@@ -592,8 +587,7 @@ export const Clip: React.FC<ClipProps> = ({
             }
 
             // Show ghost at cursor position
-            const TRACK_HEADER_WIDTH = 192;
-            const newGhostLeft = newStart * zoom + TRACK_HEADER_WIDTH;
+            const newGhostLeft = newStart * zoom + trackHeaderWidth;
 
             setGhostClips([{
               clipId: clip.id,
@@ -634,8 +628,7 @@ export const Clip: React.FC<ClipProps> = ({
 
             // Ghost shows where the new clip will be placed
             // Need to add header offset since ghost is in timeline container coordinates
-            const TRACK_HEADER_WIDTH = 192;
-            const newGhostLeft = newStart * zoom + TRACK_HEADER_WIDTH;
+            const newGhostLeft = newStart * zoom + trackHeaderWidth;
 
             setGhostClips([{
               clipId: clip.id,
