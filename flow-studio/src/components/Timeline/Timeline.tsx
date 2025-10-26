@@ -525,7 +525,7 @@ export const Timeline: React.FC = () => {
 
               {/* Actual time ruler that scrolls - distinct shade to show timeline area */}
               <div
-                className="h-14 bg-gray-800 cursor-pointer flex-1"
+                className="h-14 bg-gray-800 cursor-pointer flex-1 overflow-hidden"
                 style={{ minWidth: `${minWidth}px`, position: 'relative', zIndex: 10 }}
                 onClick={handleTimelineClick}
                 onDoubleClick={handleTimelineClick}
