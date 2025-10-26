@@ -4,16 +4,16 @@ import { motion, AnimatePresence } from 'framer-motion';
 interface SnapIndicatorProps {
   position: number | null; // Time position in seconds
   zoom: number; // pixels per second
+  trackHeaderWidth: number; // Width of track headers
 }
 
-export const SnapIndicator: React.FC<SnapIndicatorProps> = ({ position, zoom }) => {
+export const SnapIndicator: React.FC<SnapIndicatorProps> = ({ position, zoom, trackHeaderWidth }) => {
   if (position === null) return null;
 
   // IMPORTANT: Add track header width offset
-  // Clips are positioned relative to track lanes (after 192px headers)
+  // Clips are positioned relative to track lanes (after track headers)
   // But the indicator is positioned relative to timeline container (includes headers)
-  const TRACK_HEADER_WIDTH = 192;
-  const left = position * zoom + TRACK_HEADER_WIDTH;
+  const left = position * zoom + trackHeaderWidth;
 
   return (
     <AnimatePresence>

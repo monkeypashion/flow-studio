@@ -562,7 +562,7 @@ export const Timeline: React.FC = () => {
               <SelectionOverlay containerRef={timelineRef} />
 
               {/* Snap indicator - shows vertical line when clips align */}
-              <SnapIndicator position={snapIndicatorPosition} zoom={timeline.zoom} />
+              <SnapIndicator position={snapIndicatorPosition} zoom={timeline.zoom} trackHeaderWidth={trackHeaderWidth} />
             </div>
           </div>
 
