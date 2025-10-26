@@ -260,12 +260,13 @@ export const AssetPickerModal: React.FC<AssetPickerModalProps> = ({ jobId, onClo
       }
     }));
 
-    // Only fetch assets for LEAF types (types with no children)
-    const shouldFetch = willExpand && !hasChildren && (!existing || existing.assets.length === 0);
-    console.log(`Should fetch? willExpand=${willExpand}, !hasChildren=${!hasChildren}, !existing=${!existing}, assetsLength=${existing?.assets?.length}`);
+    // Fetch assets for ALL types (not just leaf types)
+    // This allows seeing asset instances at intermediate hierarchy levels
+    const shouldFetch = willExpand && (!existing || existing.assets.length === 0);
+    console.log(`Should fetch? willExpand=${willExpand}, !existing=${!existing}, assetsLength=${existing?.assets?.length}`);
 
     if (shouldFetch) {
-      console.log(`Fetching assets for leaf type: ${typeInfo?.name}`);
+      console.log(`Fetching assets for type: ${typeInfo?.name}`);
       fetchAssets(tenantId, typeId);
     } else {
       console.log(`NOT fetching - condition not met`);
@@ -307,8 +308,8 @@ export const AssetPickerModal: React.FC<AssetPickerModalProps> = ({ jobId, onClo
     setIsLoading(true);
 
     try {
-      // Group assets by tenant
-      const assetsByTenant: Record<string, string[]> = {};
+      // Group assets by tenant (using Set to avoid duplicates)
+      const assetsByTenant: Record<string, Set<string>> = {};
 
       Object.values(tenantNodes).forEach(tenant => {
         // Get ALL type IDs (including nested children)
@@ -321,9 +322,9 @@ export const AssetPickerModal: React.FC<AssetPickerModalProps> = ({ jobId, onClo
             typeNode.assets.forEach(asset => {
               if (selectedAssets.has(asset.assetId)) {
                 if (!assetsByTenant[tenant.id]) {
-                  assetsByTenant[tenant.id] = [];
+                  assetsByTenant[tenant.id] = new Set();
                 }
-                assetsByTenant[tenant.id].push(asset.assetId);
+                assetsByTenant[tenant.id].add(asset.assetId); // Use Set.add() instead of Array.push()
               }
             });
           }
@@ -331,9 +332,12 @@ export const AssetPickerModal: React.FC<AssetPickerModalProps> = ({ jobId, onClo
       });
 
       // Fetch full asset data for each tenant's assets
-      for (const [tenantId, assetIds] of Object.entries(assetsByTenant)) {
+      for (const [tenantId, assetIdsSet] of Object.entries(assetsByTenant)) {
         const tenant = tenantNodes[tenantId];
         if (!tenant) continue;
+
+        // Convert Set to Array for API call
+        const assetIds = Array.from(assetIdsSet);
 
         const response = await fetch('http://localhost:3000/api/assets/load', {
           method: 'POST',
@@ -418,31 +422,37 @@ export const AssetPickerModal: React.FC<AssetPickerModalProps> = ({ jobId, onClo
 
         {typeNode?.expanded && (
           <>
-            {/* If type has children, render them recursively */}
+            {/* Show assets for this type (if any), but exclude assets that belong to child types */}
+            {typeNode.assets.length > 0 && (() => {
+              // Filter to only show assets that are DIRECTLY of this type (not of child types)
+              // The API returns all assets including subtypes, so we need to filter by exact typeId match
+              const directAssets = typeNode.assets.filter(asset => asset.typeId === type.id);
+
+              return directAssets.map(asset => {
+                if (!matchesSearch(asset.name)) return null;
+
+                const isSelected = selectedAssets.has(asset.assetId);
+
+                return (
+                  <div key={asset.assetId}>
+                    <div className="flex items-center px-2 py-1.5 hover:bg-gray-750 transition-colors" style={{ marginLeft: `${(depth + 1) * 16}px` }}>
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => toggleAsset(asset.assetId)}
+                        className="mr-2 w-3.5 h-3.5 rounded border-gray-600 text-blue-600 focus:ring-blue-500 focus:ring-offset-gray-800"
+                      />
+                      <span className="text-xs text-gray-300">{asset.name}</span>
+                    </div>
+                  </div>
+                );
+              });
+            })()}
+
+            {/* If type has children, render them recursively after the assets */}
             {hasChildren && type.children!.map(childType =>
               renderAssetType(childType, tenantId, depth + 1)
             )}
-
-            {/* If type has NO children (leaf node), show assets */}
-            {!hasChildren && typeNode.assets.map(asset => {
-              if (!matchesSearch(asset.name)) return null;
-
-              const isSelected = selectedAssets.has(asset.assetId);
-
-              return (
-                <div key={asset.assetId}>
-                  <div className="flex items-center px-2 py-1.5 hover:bg-gray-750 transition-colors" style={{ marginLeft: `${(depth + 1) * 16}px` }}>
-                    <input
-                      type="checkbox"
-                      checked={isSelected}
-                      onChange={() => toggleAsset(asset.assetId)}
-                      className="mr-2 w-3.5 h-3.5 rounded border-gray-600 text-blue-600 focus:ring-blue-500 focus:ring-offset-gray-800"
-                    />
-                    <span className="text-xs text-gray-300">{asset.name}</span>
-                  </div>
-                </div>
-              );
-            })}
           </>
         )}
       </div>
