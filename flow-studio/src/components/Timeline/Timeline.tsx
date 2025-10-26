@@ -117,8 +117,8 @@ export const Timeline: React.FC = () => {
       // Calculate x position relative to time ruler
       const x = e.clientX - rect.left;
 
-      // Convert to time - no need to subtract header since time ruler starts at time 0
-      let time = x / timeline.zoom;
+      // Subtract trackHeaderWidth offset since markers are offset to the right
+      let time = (x - trackHeaderWidth) / timeline.zoom;
 
       // Snap to grid if enabled
       if (timeline.gridSnap) {
