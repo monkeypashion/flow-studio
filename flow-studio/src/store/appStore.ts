@@ -191,11 +191,12 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   timeline: {
     // Calculate initial zoom to fit entire duration in typical screen width
-    // Typical width: 1400px container - 192px headers = 1208px available
+    // Typical width: 1400px container - 192px headers (default) = 1208px available
     // This will be recalculated by ResizeObserver once DOM is ready
+    // Note: Uses default 192px for initial calculation, actual value from trackHeaderWidth state
     zoom: (() => {
       const TYPICAL_CONTAINER_WIDTH = 1400;
-      const TRACK_HEADER_WIDTH = 192;
+      const TRACK_HEADER_WIDTH = 192; // Use default for initial load
       const availableWidth = TYPICAL_CONTAINER_WIDTH - TRACK_HEADER_WIDTH;
       const duration = 86400; // 24 hours
       return availableWidth / duration; // ~0.014 pixels per second
@@ -1533,9 +1534,10 @@ export const useAppStore = create<AppStore>((set, get) => ({
       ? document.querySelector('.hide-scrollbar') as HTMLElement
       : null;
 
-    const TRACK_HEADER_WIDTH = 192; // Width of sticky track headers (VisibilityTree)
-    const containerWidth = timelineContainer?.clientWidth || (typeof window !== 'undefined' ? window.innerWidth - 192 : 1200);
-    const availableWidth = containerWidth - TRACK_HEADER_WIDTH;
+    // Use dynamic track header width from state
+    const trackHeaderWidth = get().trackHeaderWidth;
+    const containerWidth = timelineContainer?.clientWidth || (typeof window !== 'undefined' ? window.innerWidth - trackHeaderWidth : 1200);
+    const availableWidth = Math.max(100, containerWidth - trackHeaderWidth); // Safety: ensure positive width
 
     // Calculate zoom: pixels per second needed to fit entire duration in screen
     let newZoom = availableWidth / validDuration;
