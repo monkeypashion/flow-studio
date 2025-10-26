@@ -511,7 +511,7 @@ export const Timeline: React.FC = () => {
               {/* Actual time ruler that scrolls - distinct shade to show timeline area */}
               <div
                 className="h-14 bg-gray-800 cursor-pointer"
-                style={{ width: `${calculatedWidth}px` }}
+                style={{ width: `${timelineWidth}px` }}
                 onClick={handleTimelineClick}
                 onDoubleClick={handleTimelineClick}
               >
