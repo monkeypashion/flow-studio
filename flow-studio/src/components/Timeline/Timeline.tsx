@@ -226,11 +226,11 @@ export const Timeline: React.FC = () => {
     }
 
     // Limit total number of markers to prevent performance issues
-    // Increased limit for more granularity
+    // Use TOTAL duration for marker count (markers span entire timeline, not just viewport)
     const maxMarkers = 300;
-    const estimatedMarkers = Math.ceil(timeline.viewportDuration / interval);
+    const estimatedMarkers = Math.ceil(timeline.duration / interval);
     if (estimatedMarkers > maxMarkers) {
-      interval = Math.ceil(timeline.viewportDuration / maxMarkers);
+      interval = Math.ceil(timeline.duration / maxMarkers);
     }
 
     // Calculate minimum spacing between markers to prevent overlap
@@ -245,18 +245,17 @@ export const Timeline: React.FC = () => {
     }
 
     let markerIndex = 0;
-    // Loop through VIEWPORT duration, not total timeline duration
-    // Generate markers for the visible viewport range only
-    for (let i = 0; i <= timeline.viewportDuration; i += interval) {
+    // Loop through ENTIRE timeline duration (not just viewport)
+    // Markers must exist across full range so they're visible when scrolling
+    for (let i = 0; i <= timeline.duration; i += interval) {
       // Skip markers to prevent overlap when zoomed out
       if (markerIndex % skipFactor !== 0) {
         markerIndex++;
         continue;
       }
 
-      // Calculate absolute time: viewport start + relative position
-      const absoluteTime = timeline.viewportStart + i;
-      const { date, time } = formatTimeForMarker(absoluteTime);
+      // i is time in seconds from timeline start
+      const { date, time } = formatTimeForMarker(i);
 
       markers.push(
         <div
@@ -370,10 +369,7 @@ export const Timeline: React.FC = () => {
   // Recalculate zoom when viewport duration or track header width changes
   useEffect(() => {
     // Wait for ResizeObserver to set containerWidth before calculating zoom
-    if (containerWidth === null) {
-      console.log('[ZOOM] containerWidth is null, skipping zoom calc');
-      return;
-    }
+    if (containerWidth === null) return;
 
     // Use containerWidth state which is kept up-to-date by the ResizeObserver
     const availableWidth = containerWidth - trackHeaderWidth;
@@ -382,19 +378,8 @@ export const Timeline: React.FC = () => {
     // Max 200 pixels/second for extreme zoom in
     const clampedZoom = Math.max(0.0001, Math.min(200, newZoom));
 
-    console.log('[ZOOM] Recalculating zoom:', {
-      containerWidth,
-      trackHeaderWidth,
-      availableWidth,
-      viewportDuration: timeline.viewportDuration,
-      viewportDurationDays: timeline.viewportDuration / 86400,
-      newZoom,
-      clampedZoom,
-      oldZoom: timeline.zoom,
-    });
-
     setZoom(clampedZoom);
-  }, [timeline.viewportDuration, trackHeaderWidth, containerWidth, setZoom, timeline.zoom]);
+  }, [timeline.viewportDuration, trackHeaderWidth, containerWidth, setZoom]);
 
   // Track container width and recalculate zoom when it changes
   useEffect(() => {
@@ -404,9 +389,6 @@ export const Timeline: React.FC = () => {
     // Create a ResizeObserver to detect when available width changes (panels opening/closing, window resize)
     const resizeObserver = new ResizeObserver(() => {
       const newContainerWidth = timelineContainer.clientWidth;
-
-      console.log('[RESIZE] Container width changed:', newContainerWidth);
-
       // Update container width state - this will trigger the useEffect that recalculates zoom
       setContainerWidth(newContainerWidth);
     });
