@@ -503,15 +503,15 @@ export const Timeline: React.FC = () => {
             onScroll={handleScroll}
           >
             {/* Time ruler - matches track layout with sticky left spacer */}
-            <div className="flex border-b border-gray-700">
+            <div className="flex border-b border-gray-700 sticky top-0 z-40 bg-timeline-bg">
               {/* Empty spacer to match track headers - sticky so it stays visible */}
               <div
-                className="flex-shrink-0 bg-gray-900 border-r border-gray-700 sticky left-0 z-30 relative"
+                className="flex-shrink-0 bg-gray-900 border-r border-gray-700 sticky left-0 z-50 relative"
                 style={{ width: `${trackHeaderWidth}px` }}
               >
                 {/* Resize handle - draggable vertical bar */}
                 <div
-                  className={`absolute right-0 top-0 bottom-0 w-1 cursor-col-resize z-40 transition-colors ${
+                  className={`absolute right-0 top-0 bottom-0 w-1 cursor-col-resize z-50 transition-colors ${
                     isDraggingHeaderResize ? 'bg-blue-500' : 'hover:bg-blue-400 bg-transparent'
                   }`}
                   onMouseDown={handleHeaderResizeMouseDown}
