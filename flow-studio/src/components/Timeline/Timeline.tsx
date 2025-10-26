@@ -404,7 +404,7 @@ export const Timeline: React.FC = () => {
     return () => {
       resizeObserver.disconnect();
     };
-  }, [trackHeaderWidth, setZoom]);
+  }, [trackHeaderWidth, timeline.viewportDuration, timeline.zoom, setZoom]);
 
   return (
     <div className="flex flex-col h-full bg-timeline-bg">
