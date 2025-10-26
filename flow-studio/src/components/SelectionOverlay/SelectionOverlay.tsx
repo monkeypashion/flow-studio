@@ -14,7 +14,7 @@ export const SelectionOverlay: React.FC<SelectionOverlayProps> = ({ containerRef
   const isSelectingRef = useRef(false); // Track selecting state in ref to avoid closure issues
   const justFinishedSelecting = useRef(false); // Prevent clicks immediately after selection
 
-  const { selectClip, clearSelection, dataJobs, activeJobId, timeline, selection } = useAppStore();
+  const { selectClip, clearSelection, dataJobs, activeJobId, timeline, selection, trackHeaderWidth } = useAppStore();
 
   // Get groups from active job
   const activeJob = dataJobs.find(job => job.id === activeJobId);
@@ -86,10 +86,9 @@ export const SelectionOverlay: React.FC<SelectionOverlayProps> = ({ containerRef
       // Collect all clips that should be selected
       const clipsToSelect = new Set<string>(initialSelection.current);
 
-      // IMPORTANT: Clips are positioned relative to track lanes (AFTER 192px headers)
+      // IMPORTANT: Clips are positioned relative to track lanes (AFTER track headers)
       // But selection box is relative to timeline container (INCLUDES headers)
       // So we need to add header offset to clip positions
-      const TRACK_HEADER_WIDTH = 192;
       const timelineContainer = document.querySelector('[data-timeline-container]') as HTMLElement;
 
       // Calculate track positions and check which clips intersect with selection
@@ -124,8 +123,8 @@ export const SelectionOverlay: React.FC<SelectionOverlayProps> = ({ containerRef
 
                     // Clip positions in timeline container coordinates
                     // Add header width to convert from track-relative to container-relative
-                    const clipLeft = clip.timeRange.start * timeline.zoom + TRACK_HEADER_WIDTH;
-                    const clipRight = clip.timeRange.end * timeline.zoom + TRACK_HEADER_WIDTH;
+                    const clipLeft = clip.timeRange.start * timeline.zoom + trackHeaderWidth;
+                    const clipRight = clip.timeRange.end * timeline.zoom + trackHeaderWidth;
 
                     // Check if clip intersects with selection box (any overlap)
                     const intersects =
@@ -188,7 +187,7 @@ export const SelectionOverlay: React.FC<SelectionOverlayProps> = ({ containerRef
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [clearSelection, selectClip, dataJobs, activeJobId, timeline, selection, containerRef, groups]);
+  }, [clearSelection, selectClip, dataJobs, activeJobId, timeline, selection, containerRef, groups, trackHeaderWidth]);
 
   if (!isSelecting || selectionBox.width === 0 || selectionBox.height === 0) {
     return null;
