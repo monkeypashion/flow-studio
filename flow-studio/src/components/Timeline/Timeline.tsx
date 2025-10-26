@@ -197,10 +197,10 @@ export const Timeline: React.FC = () => {
   const generateTimeMarkers = () => {
     const markers = [];
 
-    // Calculate smart interval based on duration and zoom
-    // More granular intervals for better visibility when panning
+    // Calculate smart interval based on VIEWPORT duration (not total timeline duration)
+    // This ensures markers are appropriate for what's actually visible
     let interval: number;
-    const durationInHours = timeline.duration / 3600;
+    const durationInHours = timeline.viewportDuration / 3600;
 
     if (durationInHours > 48) {
       // More than 2 days: show markers every 2 hours
@@ -228,9 +228,9 @@ export const Timeline: React.FC = () => {
     // Limit total number of markers to prevent performance issues
     // Increased limit for more granularity
     const maxMarkers = 300;
-    const estimatedMarkers = Math.ceil(timeline.duration / interval);
+    const estimatedMarkers = Math.ceil(timeline.viewportDuration / interval);
     if (estimatedMarkers > maxMarkers) {
-      interval = Math.ceil(timeline.duration / maxMarkers);
+      interval = Math.ceil(timeline.viewportDuration / maxMarkers);
     }
 
     // Calculate minimum spacing between markers to prevent overlap
@@ -245,14 +245,18 @@ export const Timeline: React.FC = () => {
     }
 
     let markerIndex = 0;
-    for (let i = 0; i <= timeline.duration; i += interval) {
+    // Loop through VIEWPORT duration, not total timeline duration
+    // Generate markers for the visible viewport range only
+    for (let i = 0; i <= timeline.viewportDuration; i += interval) {
       // Skip markers to prevent overlap when zoomed out
       if (markerIndex % skipFactor !== 0) {
         markerIndex++;
         continue;
       }
 
-      const { date, time } = formatTimeForMarker(i);
+      // Calculate absolute time: viewport start + relative position
+      const absoluteTime = timeline.viewportStart + i;
+      const { date, time } = formatTimeForMarker(absoluteTime);
 
       markers.push(
         <div
