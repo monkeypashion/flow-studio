@@ -527,8 +527,8 @@ export const Timeline: React.FC = () => {
             <div className="flex border-b border-gray-700 sticky top-0 z-40 bg-timeline-bg">
               {/* Empty spacer to match track headers - sticky so it stays visible */}
               <div
-                className="flex-shrink-0 bg-gray-900 border-r border-gray-700 sticky left-0 z-50 relative h-14"
-                style={{ width: `${trackHeaderWidth}px`, isolation: 'isolate' }}
+                className="flex-shrink-0 bg-gray-900 border-r border-gray-700 sticky left-0 relative h-14"
+                style={{ width: `${trackHeaderWidth}px`, zIndex: 100 }}
               >
                 {/* Resize handle - draggable vertical bar */}
                 <div
@@ -543,7 +543,7 @@ export const Timeline: React.FC = () => {
               {/* Actual time ruler that scrolls - distinct shade to show timeline area */}
               <div
                 className="h-14 bg-gray-800 cursor-pointer flex-1 overflow-hidden"
-                style={{ minWidth: `${minWidth}px`, position: 'relative', zIndex: 10 }}
+                style={{ minWidth: `${minWidth}px`, position: 'relative', zIndex: 1 }}
                 onClick={handleTimelineClick}
                 onDoubleClick={handleTimelineClick}
               >
