@@ -366,20 +366,23 @@ export const Timeline: React.FC = () => {
     }
   }, [timeline.scrollX]);
 
-  // Recalculate zoom when viewport duration or track header width changes
+  // Recalculate zoom when viewport duration or container width changes
+  // NOTE: trackHeaderWidth is NOT in dependencies - we read current value but don't re-run when it changes
+  // This keeps timeline scale constant when resizing headers (just makes it more scrollable)
   useEffect(() => {
     // Wait for ResizeObserver to set containerWidth before calculating zoom
     if (containerWidth === null) return;
 
-    // Use containerWidth state which is kept up-to-date by the ResizeObserver
-    const availableWidth = containerWidth - trackHeaderWidth;
+    // Read current trackHeaderWidth from store (avoids stale closure without triggering on changes)
+    const currentTrackHeaderWidth = useAppStore.getState().trackHeaderWidth;
+    const availableWidth = containerWidth - currentTrackHeaderWidth;
     const newZoom = availableWidth / timeline.viewportDuration;
     // Allow very low zoom for large time ranges (0.0001 = 10000 seconds per pixel = ~2.7 hours/px)
     // Max 200 pixels/second for extreme zoom in
     const clampedZoom = Math.max(0.0001, Math.min(200, newZoom));
 
     setZoom(clampedZoom);
-  }, [timeline.viewportDuration, trackHeaderWidth, containerWidth, setZoom]);
+  }, [timeline.viewportDuration, containerWidth, setZoom]);
 
   // Track container width and recalculate zoom when it changes
   useEffect(() => {
