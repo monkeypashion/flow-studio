@@ -66,6 +66,7 @@ export const Timeline: React.FC = () => {
   // Handle scroll
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const target = e.target as HTMLDivElement;
+    console.log('[SCROLL]', { scrollLeft: target.scrollLeft, scrollTop: target.scrollTop });
     setScroll(target.scrollLeft, target.scrollTop);
   };
 
@@ -197,6 +198,15 @@ export const Timeline: React.FC = () => {
   const generateTimeMarkers = () => {
     const markers = [];
 
+    console.log('[MARKERS] Generating time markers:', {
+      scrollX: timeline.scrollX,
+      viewportStart: timeline.viewportStart,
+      viewportDuration: timeline.viewportDuration,
+      duration: timeline.duration,
+      zoom: timeline.zoom,
+      trackHeaderWidth,
+    });
+
     // Calculate smart interval based on VIEWPORT duration (not total timeline duration)
     // This ensures markers are appropriate for what's actually visible
     let interval: number;
@@ -256,12 +266,18 @@ export const Timeline: React.FC = () => {
 
       // i is time in seconds from timeline start
       const { date, time } = formatTimeForMarker(i);
+      const markerLeftPx = i * timeline.zoom;
+
+      // Log first few markers to see their positions
+      if (markerIndex < 5) {
+        console.log(`[MARKER ${markerIndex}] time=${i}s, left=${markerLeftPx}px, date=${date} ${time}`);
+      }
 
       markers.push(
         <div
           key={i}
           className="absolute flex flex-col items-center"
-          style={{ left: `${i * timeline.zoom}px` }}
+          style={{ left: `${markerLeftPx}px` }}
         >
           <div className="h-2 w-px bg-gray-600" />
           <div className="flex flex-col items-center mt-1">
@@ -274,6 +290,7 @@ export const Timeline: React.FC = () => {
       markerIndex++;
     }
 
+    console.log(`[MARKERS] Generated ${markers.length} markers total`);
     return markers;
   };
 
