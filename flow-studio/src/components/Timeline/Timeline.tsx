@@ -365,6 +365,9 @@ export const Timeline: React.FC = () => {
 
   // Recalculate zoom when viewport duration or track header width changes
   useEffect(() => {
+    // Wait for ResizeObserver to set containerWidth before calculating zoom
+    if (containerWidth === null) return;
+
     // Use containerWidth state which is kept up-to-date by the ResizeObserver
     const availableWidth = containerWidth - trackHeaderWidth;
     const newZoom = availableWidth / timeline.viewportDuration;
