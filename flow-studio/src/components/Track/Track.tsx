@@ -34,6 +34,7 @@ export const Track: React.FC<TrackProps> = ({
     selectTrackClips,
     clearSelection,
     timeline,
+    trackHeaderWidth,
     showAssets,
     hoveredItem,
     selectedItem,
@@ -89,8 +90,7 @@ export const Track: React.FC<TrackProps> = ({
         // Calculate dynamic clip duration based on what's VISIBLE on screen (not Navigator viewport)
         // Get the actual visible timeline width (excluding track headers)
         const timelineContainer = document.querySelector('.hide-scrollbar') as HTMLElement;
-        const TRACK_HEADER_WIDTH = 192;
-        const visibleWidth = (timelineContainer?.clientWidth || 1200) - TRACK_HEADER_WIDTH;
+        const visibleWidth = (timelineContainer?.clientWidth || 1200) - trackHeaderWidth;
 
         // Calculate how much time is currently visible
         const visibleDuration = visibleWidth / zoom;
