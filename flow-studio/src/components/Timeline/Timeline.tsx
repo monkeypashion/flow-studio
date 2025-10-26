@@ -49,7 +49,7 @@ export const Timeline: React.FC = () => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [isDraggingPlayhead, setIsDraggingPlayhead] = useState(false);
   const [isDraggingHeaderResize, setIsDraggingHeaderResize] = useState(false);
-  const [containerWidth, setContainerWidth] = useState(1400); // Track container width for proper sizing
+  const [containerWidth, setContainerWidth] = useState<number | null>(null); // Track container width for proper sizing
 
   // Calculate timeline width
   // Track headers are resizable, independent of tree width
@@ -57,7 +57,9 @@ export const Timeline: React.FC = () => {
   // Ensure timeline always extends at least to fill the visible container
   // This prevents container background showing through when timeline is narrower than viewport
   // containerWidth is already the width AFTER the VisibilityTree, so just subtract track header
-  const minWidth = Math.max(calculatedWidth, containerWidth - trackHeaderWidth);
+  const minWidth = containerWidth !== null
+    ? Math.max(calculatedWidth, containerWidth - trackHeaderWidth)
+    : calculatedWidth;
   const timelineWidth = minWidth + trackHeaderWidth;
 
 
