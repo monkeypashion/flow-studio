@@ -7,6 +7,8 @@ import { SnapIndicator } from '../SnapIndicator/SnapIndicator';
 import { VisibilityTree } from '../VisibilityTree/VisibilityTree';
 import { DateRangePicker } from '../DateRangePicker/DateRangePicker';
 import { Navigator } from '../Navigator/Navigator';
+// import { ClipManagerModal } from '../ClipManager/ClipManagerModal'; // Removed - using direct validation now
+import { SpecialLane } from '../SpecialLane/SpecialLane';
 import { motion } from 'framer-motion';
 import './Timeline.css';
 
@@ -23,6 +25,8 @@ export const Timeline: React.FC = () => {
     settingsVisible,
     showAssets,
     showAspects,
+    showSource,
+    showDestination,
     treeWidth,
     trackHeaderWidth,
     setScroll,
@@ -39,6 +43,13 @@ export const Timeline: React.FC = () => {
     toggleSettings,
     toggleShowAssets,
     toggleShowAspects,
+    toggleShowClipsOnly,
+    toggleShowSource,
+    toggleShowDestination,
+    toggleSyncLinkedClipPositions,
+    setSyncMode,
+    showClipsOnly,
+    tenants,
   } = useAppStore();
 
   // Get groups from active job
@@ -277,6 +288,530 @@ export const Timeline: React.FC = () => {
     return markers;
   };
 
+  // Helper: Set all destination clips to 'uploading' state (preserve current progress)
+  const setDestinationClipsToUploading = () => {
+    if (!activeJob) return;
+
+    // Find all destination clips and set to uploading (keep current progress)
+    activeJob.groups.forEach(group => {
+      group.aspects.forEach(aspect => {
+        aspect.tracks.forEach(track => {
+          track.clips.forEach(clip => {
+            if (clip.linkType === 'destination') {
+              // Keep current progress, just update state to uploading
+              useAppStore.getState().updateClip(clip.id, {
+                state: 'uploading'
+                // Don't reset progress - it should stay where it was
+              });
+            }
+          });
+        });
+      });
+    });
+  };
+
+  // Helper: Update all destination clips' progress
+  const updateDestinationClipsProgress = (progressPercent: number, state: 'uploading' | 'processing' | 'complete' | 'error') => {
+    if (!activeJob) return;
+
+    activeJob.groups.forEach(group => {
+      group.aspects.forEach(aspect => {
+        aspect.tracks.forEach(track => {
+          track.clips.forEach(clip => {
+            if (clip.linkType === 'destination') {
+              useAppStore.getState().updateClip(clip.id, {
+                state: state,
+                progress: progressPercent
+              });
+            }
+          });
+        });
+      });
+    });
+  };
+
+  // Helper: Update destination clips with lastSyncedTime (for time-based progress)
+  const updateDestinationClipsProgressWithTimestamp = (progressPercent: number, state: 'uploading' | 'processing' | 'complete' | 'error', lastSyncedTime: string) => {
+    if (!activeJob) return;
+
+    activeJob.groups.forEach(group => {
+      group.aspects.forEach(aspect => {
+        aspect.tracks.forEach(track => {
+          track.clips.forEach(clip => {
+            if (clip.linkType === 'destination') {
+              useAppStore.getState().updateClip(clip.id, {
+                state: state,
+                progress: progressPercent,
+                lastSyncedTime: lastSyncedTime
+              });
+            }
+          });
+        });
+      });
+    });
+  };
+
+  // Validate clips and send to API
+  const handleValidateClips = async () => {
+    if (!activeJob) {
+      console.warn('No active job');
+      return;
+    }
+
+    // Check if this is a subsequent sync (sync_key exists)
+    const isSubsequentSync = !!activeJob.syncKey;
+
+    if (isSubsequentSync) {
+      // Subsequent sync: use minimal payload with just sync_key
+      console.log('\n=== Subsequent Incremental Sync ===');
+      console.log(`Using sync_key: ${activeJob.syncKey}`);
+
+      const minimalPayload = {
+        sync_key: activeJob.syncKey,
+        mock: true,
+        mock_delay_seconds: 5 // 5 seconds to see progress bar in action
+      };
+
+      console.log('Minimal Payload:', JSON.stringify(minimalPayload, null, 2));
+
+      try {
+        console.log('\n=== Sending to API (via proxy) ===');
+        console.log('POST http://localhost:3000/api/sync/trigger');
+
+        const response = await fetch('http://localhost:3000/api/sync/trigger', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(minimalPayload),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('❌ API Error:', response.status, errorText);
+          return;
+        }
+
+        const result = await response.json();
+        console.log('✅ API Response:', result);
+        console.log(`Job ID: ${result.job_id}`);
+        console.log(`Status: ${result.status}`);
+        console.log(`Message: ${result.message}`);
+
+        // Update sync status
+        useAppStore.getState().updateSyncStatus(activeJob.id, result.job_id, result.status);
+
+        // Set all destination clips to 'uploading' state with 0 progress
+        setDestinationClipsToUploading();
+
+        // Start polling for job status
+        if (result.job_id) {
+          console.log('\n=== Monitoring Job Progress ===');
+          pollJobStatus(result.job_id);
+        }
+      } catch (error) {
+        console.error('❌ Failed to send request:', error);
+      }
+
+      return; // Exit early for subsequent sync
+    }
+
+    // First sync: build full payload
+    console.log('\n=== First Incremental Sync ===');
+
+    // Collect all clips from all groups/aspects/tracks
+    const sourceClips: any[] = [];
+    const destClips: any[] = [];
+
+    activeJob.groups.forEach(group => {
+      group.aspects.forEach(aspect => {
+        aspect.tracks.forEach(track => {
+          track.clips.forEach(clip => {
+            // Filter by clip type
+            if (clip.linkType === 'source') {
+              sourceClips.push({
+                clipId: clip.id,
+                clipName: clip.name,
+                assetName: group.name || group.assetId || 'Unknown Asset',
+                aspectName: aspect.name,
+                groupId: group.id,
+                aspectId: aspect.id,
+                trackId: track.id,
+                dataType: clip.dataType || track.dataType,
+                unit: clip.unit || track.unit,
+                property: track.property,
+                absoluteStartTime: clip.absoluteStartTime,
+                absoluteEndTime: clip.absoluteEndTime,
+              });
+            } else if (clip.linkType === 'destination') {
+              destClips.push({
+                clipId: clip.id,
+                clipName: clip.name,
+                assetName: group.name || group.assetId || 'Unknown Asset',
+                aspectName: aspect.name,
+                groupId: group.id,
+                aspectId: aspect.id,
+                trackId: track.id,
+                dataType: clip.dataType || track.dataType,
+                unit: clip.unit || track.unit,
+                property: track.property,
+                absoluteStartTime: clip.absoluteStartTime,
+                absoluteEndTime: clip.absoluteEndTime,
+                sourceClipId: clip.sourceClipId, // Reference to which source clip this pulls from
+              });
+            }
+          });
+        });
+      });
+    });
+
+    if (sourceClips.length === 0) {
+      console.warn('⚠️ No source clips found. Mark clips as Source type first.');
+      return;
+    }
+
+    if (destClips.length === 0) {
+      console.warn('⚠️ No destination clips found. Mark clips as Destination type first.');
+      return;
+    }
+
+    // Build API payload structure
+    const sourceProperties: Record<string, string> = {};
+    const destProperties: Record<string, string> = {};
+    const schema: Record<string, string> = {};
+
+    // Get source and destination group info
+    const sourceGroupId = sourceClips[0]?.groupId;
+    const destGroupId = destClips[0]?.groupId;
+
+    const sourceGroup = activeJob.groups.find(g => g.id === sourceGroupId);
+    const destGroup = activeJob.groups.find(g => g.id === destGroupId);
+
+    // Look up tenant credentials
+    const sourceTenant = tenants.find(t => t.tenantId === sourceGroup?.tenantId);
+    const destTenant = tenants.find(t => t.tenantId === destGroup?.tenantId);
+
+    // Build source and destination properties mapping using sourceClipId links
+    // The UI allows users to explicitly link destination clips to source clips via sourceClipId
+    // Each link creates an "abstract field" that appears in both source and destination properties
+    destClips.forEach((destClip) => {
+      // Only process destination clips that have a source link
+      if (!destClip.sourceClipId || !destClip.property) {
+        return;
+      }
+
+      // Find the source clip this destination is linked to
+      const linkedSourceClip = sourceClips.find(sc => sc.clipId === destClip.sourceClipId);
+
+      if (!linkedSourceClip || !linkedSourceClip.property) {
+        console.warn(`⚠️ Destination clip "${destClip.clipName}" is linked to a source clip that doesn't exist or has no property`);
+        return;
+      }
+
+      // Abstract field name: use the SOURCE property name as the key
+      // This is the field name that will appear in the schema
+      const abstractField = linkedSourceClip.property;
+
+      // Build source path from SOURCE CLIP: assetId/aspectName/property
+      const sourceGroup = activeJob.groups.find(g => g.id === linkedSourceClip.groupId);
+      const sourceAssetId = sourceGroup?.assetId || linkedSourceClip.groupId;
+      const sourcePath = `${sourceAssetId}/${linkedSourceClip.aspectName}/${linkedSourceClip.property}`;
+      sourceProperties[abstractField] = sourcePath;
+
+      // Build destination path from DESTINATION CLIP: assetId/aspectName/property
+      const destGroup = activeJob.groups.find(g => g.id === destClip.groupId);
+      const destAssetId = destGroup?.assetId || destClip.groupId;
+      const destPath = `${destAssetId}/${destClip.aspectName}/${destClip.property}`;
+      destProperties[abstractField] = destPath;
+
+      // Add to schema - use source data type (or fall back to destination)
+      const dataType = linkedSourceClip.dataType || destClip.dataType;
+      if (dataType) {
+        // Map Flow Studio data types to API data types
+        const typeMap: Record<string, string> = {
+          'Double': 'number',
+          'Int': 'integer',
+          'Long': 'integer',
+          'Boolean': 'boolean',
+          'String': 'string',
+          'Big_string': 'string',
+          'Timestamp': 'string'
+        };
+        schema[abstractField] = typeMap[dataType] || 'string';
+      }
+    });
+
+    // Get time range from Source Master (first clip in master lane)
+    const sourceMaster = activeJob.masterLane?.clips?.[0];
+    const sourceStartDate = sourceMaster?.absoluteStartTime ? new Date(sourceMaster.absoluteStartTime) : null;
+    const sourceEndDate = sourceMaster?.absoluteEndTime ? new Date(sourceMaster.absoluteEndTime) : null;
+
+    // Get time range from Destination Master (second clip in master lane, only in full sync mode)
+    const destMaster = activeJob.masterLane?.clips?.[1];
+    const destStartDate = destMaster?.absoluteStartTime ? new Date(destMaster.absoluteStartTime) : null;
+    const destEndDate = destMaster?.absoluteEndTime ? new Date(destMaster.absoluteEndTime) : null;
+
+    const formatDateTime = (date: Date | null) => {
+      if (!date) return '';
+      const day = String(date.getDate()).padStart(2, '0');
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const year = date.getFullYear();
+      const hours = String(date.getHours()).padStart(2, '0');
+      const minutes = String(date.getMinutes()).padStart(2, '0');
+      return `${day}/${month}/${year}, ${hours}:${minutes}`;
+    };
+
+    // Calculate timestamp shift if source and destination have different start times
+    let transformationConfig: { type: string; target_start_date: string } | undefined = undefined;
+    if (sourceStartDate && destStartDate) {
+      const timeDiffMs = destStartDate.getTime() - sourceStartDate.getTime();
+
+      // Only add transformation if there's a significant difference (> 1 minute to avoid rounding issues)
+      if (Math.abs(timeDiffMs) > 60000) {
+        // Use target_start_date format (more explicit than calculating shift_days)
+        transformationConfig = {
+          type: "timestamp_shift",
+          target_start_date: destStartDate.toISOString() // ISO 8601 format: "2026-01-15T00:00:00Z"
+        };
+      }
+    }
+
+    const apiPayload: any = {
+      sync_mode: activeJob.syncMode === 'incremental' ? "incremental" : "full",
+      source: {
+        tenant_id: sourceTenant?.tenantId || sourceGroup?.tenantId || "",
+        client_id: sourceTenant?.clientId || "",
+        client_secret: sourceTenant?.clientSecret || "",
+        region: sourceTenant?.region || "",
+        start_date: formatDateTime(sourceStartDate),
+        end_date: formatDateTime(sourceEndDate),
+        properties: sourceProperties
+      },
+      destination: {
+        tenant_id: destTenant?.tenantId || destGroup?.tenantId || "",
+        client_id: destTenant?.clientId || "",
+        client_secret: destTenant?.clientSecret || "",
+        region: destTenant?.region || "",
+        properties: destProperties
+      },
+      schema: schema,
+      mock: true, // Use mock mode for testing
+      mock_delay_seconds: 5 // 5 seconds to see progress bar in action
+    };
+
+    // Add transformation_config if there's a time shift
+    if (transformationConfig) {
+      apiPayload.transformation_config = transformationConfig;
+    }
+
+    // Validation: Check for destination clips without source links
+    const unlinkedDestClips = destClips.filter(dc => !dc.sourceClipId);
+    if (unlinkedDestClips.length > 0) {
+      console.warn(`\n⚠️ Warning: ${unlinkedDestClips.length} destination clip(s) are not linked to a source clip:`);
+      unlinkedDestClips.forEach(clip => {
+        console.warn(`  - ${clip.clipName} (${clip.assetName} / ${clip.aspectName} / ${clip.property})`);
+      });
+      console.warn('These clips will be excluded from the sync. Use the "Src" dropdown on each destination clip to link it to a source clip.\n');
+    }
+
+    // Check if we have any valid mappings
+    if (Object.keys(sourceProperties).length === 0) {
+      console.error('❌ No valid property mappings found. Ensure destination clips are linked to source clips using the "Src" dropdown.');
+      return;
+    }
+
+    // Output to console
+    console.log('=== Airbyte Sync Payload ===');
+    console.log(JSON.stringify(apiPayload, null, 2));
+    console.log('\n=== Source Clips ===');
+    console.log(`Found ${sourceClips.length} source clips`);
+    sourceClips.forEach((clip, i) => {
+      console.log(`  ${i + 1}. ${clip.assetName} / ${clip.aspectName} / ${clip.property}`);
+    });
+    console.log('\n=== Destination Clips ===');
+    console.log(`Found ${destClips.length} destination clips (${destClips.length - unlinkedDestClips.length} linked, ${unlinkedDestClips.length} unlinked)`);
+    destClips.forEach((clip, i) => {
+      console.log(`  ${i + 1}. ${clip.assetName} / ${clip.aspectName} / ${clip.property}`);
+      if (clip.sourceClipId) {
+        const srcClip = sourceClips.find(s => s.clipId === clip.sourceClipId);
+        if (srcClip) {
+          console.log(`     → Pulls data from: ${srcClip.assetName} / ${srcClip.aspectName} / ${srcClip.property}`);
+        } else {
+          console.log(`     ⚠️ Linked to unknown source clip ID: ${clip.sourceClipId}`);
+        }
+      } else {
+        console.log(`     ⚠️ Not linked to any source clip`);
+      }
+    });
+    console.log('\n=== Property Mappings ===');
+    console.log(`Created ${Object.keys(sourceProperties).length} property mapping(s):`);
+    Object.keys(sourceProperties).forEach((key, i) => {
+      console.log(`  ${i + 1}. ${key}:`);
+      console.log(`     Source:      ${sourceProperties[key]}`);
+      console.log(`     Destination: ${destProperties[key]}`);
+      console.log(`     Type:        ${schema[key]}`);
+    });
+
+    // Output transformation info
+    if (transformationConfig) {
+      console.log('\n=== Transformation ===');
+      console.log(`Type: ${transformationConfig.type}`);
+      console.log(`Target Start Date: ${transformationConfig.target_start_date}`);
+      console.log(`Source Start:      ${formatDateTime(sourceStartDate)}`);
+      console.log(`Destination Start: ${formatDateTime(destStartDate)}`);
+
+      // Calculate shift for informational purposes
+      if (sourceStartDate && destStartDate) {
+        const timeDiffMs = destStartDate.getTime() - sourceStartDate.getTime();
+        const timeDiffDays = Math.round((timeDiffMs / (1000 * 60 * 60 * 24)) * 100) / 100;
+        if (timeDiffDays > 0) {
+          console.log(`→ Source data will be shifted ${timeDiffDays} days FORWARD to reach destination time`);
+        } else {
+          console.log(`→ Source data will be shifted ${Math.abs(timeDiffDays)} days BACKWARD to reach destination time`);
+        }
+      }
+    } else {
+      console.log('\n=== Transformation ===');
+      console.log('No time shift required (source and destination have the same start time)');
+    }
+
+    // Send to API via backend proxy
+    try {
+      console.log('\n=== Sending to API (via proxy) ===');
+      console.log('POST http://localhost:3000/api/sync/trigger');
+
+      const response = await fetch('http://localhost:3000/api/sync/trigger', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(apiPayload),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ API Error:', response.status, errorText);
+        return;
+      }
+
+      const result = await response.json();
+      console.log('✅ API Response:', result);
+      console.log(`Job ID: ${result.job_id}`);
+      console.log(`Status: ${result.status}`);
+      console.log(`Message: ${result.message}`);
+
+      if (result.sync_key) {
+        console.log(`Sync Key: ${result.sync_key}`);
+        console.log('💾 Saving sync_key for future incremental syncs');
+        // Store sync_key in the job for subsequent syncs
+        useAppStore.getState().setSyncKey(activeJob.id, result.sync_key);
+      }
+
+      // Update sync status
+      useAppStore.getState().updateSyncStatus(activeJob.id, result.job_id, result.status);
+
+      // Set all destination clips to 'uploading' state with 0 progress
+      setDestinationClipsToUploading();
+
+      // Start polling for job status
+      if (result.job_id) {
+        console.log('\n=== Monitoring Job Progress ===');
+        pollJobStatus(result.job_id);
+      }
+    } catch (error) {
+      console.error('❌ Failed to send request:', error);
+    }
+  };
+
+  // Poll job status from API via backend proxy
+  const pollJobStatus = async (jobId: string) => {
+    let attempts = 0;
+    const maxAttempts = 60; // Poll for up to 60 seconds
+    const pollInterval = 1000; // Poll every second
+
+    const poll = async () => {
+      try {
+        const response = await fetch(`http://localhost:3000/api/sync/status/${jobId}`);
+
+        if (!response.ok) {
+          console.error(`❌ Failed to get job status: ${response.status}`);
+          return;
+        }
+
+        const status = await response.json();
+
+        console.log(`[${new Date().toLocaleTimeString()}] Job ${jobId}:`);
+        console.log(`  Status: ${status.status}`);
+        if (status.records_extracted !== null && status.records_extracted !== undefined) {
+          console.log(`  Records Extracted: ${status.records_extracted}`);
+        }
+        if (status.records_loaded !== null && status.records_loaded !== undefined) {
+          console.log(`  Records Loaded: ${status.records_loaded}`);
+        }
+        if (status.error) {
+          console.log(`  Error: ${status.error}`);
+        }
+
+        // Update status in store
+        if (activeJobId) {
+          useAppStore.getState().updateSyncStatus(activeJobId, jobId, status.status);
+        }
+
+        // Calculate and update clip progress
+        if (status.status === 'running' || status.status === 'completed') {
+          let progressPercent = 0;
+
+          // Calculate progress based on records loaded vs extracted
+          if (status.records_extracted && status.records_extracted > 0) {
+            const loaded = status.records_loaded || 0;
+            progressPercent = Math.min(100, Math.round((loaded / status.records_extracted) * 100));
+          } else if (status.status === 'completed') {
+            progressPercent = 100;
+          }
+
+          // Update clip states based on job status
+          if (status.status === 'completed') {
+            // When sync completes, set lastSyncedTime to now and update progress
+            const now = new Date().toISOString();
+            updateDestinationClipsProgressWithTimestamp(progressPercent, 'complete', now);
+          } else {
+            // Show as uploading for first 50%, processing for 50-100%
+            const clipState = progressPercent < 50 ? 'uploading' : 'processing';
+            updateDestinationClipsProgress(progressPercent, clipState);
+          }
+        }
+
+        // Continue polling if job is still running
+        if (status.status === 'pending' || status.status === 'running') {
+          attempts++;
+          if (attempts < maxAttempts) {
+            setTimeout(poll, pollInterval);
+          } else {
+            console.log('⏱️ Max polling attempts reached');
+            // Set clips to error state if polling times out
+            updateDestinationClipsProgress(0, 'error');
+          }
+        } else {
+          // Job completed
+          if (status.status === 'completed') {
+            console.log('✅ Job completed successfully!');
+            updateDestinationClipsProgress(100, 'complete');
+          } else if (status.status === 'failed') {
+            console.log('❌ Job failed!');
+            updateDestinationClipsProgress(0, 'error');
+          }
+          console.log(`Started at: ${status.started_at}`);
+          console.log(`Completed at: ${status.completed_at}`);
+        }
+      } catch (error) {
+        console.error('❌ Error polling job status:', error);
+      }
+    };
+
+    // Start polling
+    poll();
+  };
+
   // Handle keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -419,6 +954,24 @@ export const Timeline: React.FC = () => {
             </label>
           </div>
 
+          {/* Position sync toggle - DORMANT (keeping for potential future use) */}
+          {/* Flexible links are dormant in favor of Source/Destination masters */}
+          {false && activeJob && (
+            <div className="flex items-center space-x-2 flex-shrink-0 border-l border-gray-700 pl-2">
+              <label className="flex items-center text-sm text-gray-400 whitespace-nowrap">
+                <input
+                  type="checkbox"
+                  checked={activeJob.syncLinkedClipPositions}
+                  onChange={() => toggleSyncLinkedClipPositions(activeJob.id)}
+                  className="mr-2"
+                />
+                <span title="When enabled, all linked clips share the same start time">
+                  Lock Linked Positions
+                </span>
+              </label>
+            </div>
+          )}
+
           {/* View mode toggles */}
           <div className="flex items-center gap-1 flex-shrink-0 border-l border-gray-700 pl-2">
             <button
@@ -442,6 +995,47 @@ export const Timeline: React.FC = () => {
               title={showAspects ? 'Hide Aspect Groups' : 'Show Aspect Groups'}
             >
               Aspects
+            </button>
+            <button
+              onClick={toggleShowClipsOnly}
+              className={`px-2 py-1 text-xs rounded transition-colors ${
+                showClipsOnly
+                  ? 'bg-orange-600 text-white hover:bg-orange-700'
+                  : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+              }`}
+              title={showClipsOnly ? 'Show All Tracks' : 'Show Only Tracks With Clips'}
+            >
+              Clips
+            </button>
+
+            {/* Sync Mode Toggle */}
+            {activeJob && (
+              <button
+                onClick={() => {
+                  const newMode = activeJob.syncMode === 'full' ? 'incremental' : 'full';
+                  setSyncMode(activeJob.id, newMode);
+                }}
+                className={`px-2 py-1 text-xs rounded transition-colors border ${
+                  activeJob.syncMode === 'full'
+                    ? 'bg-blue-600 text-white hover:bg-blue-700 border-blue-500'
+                    : 'bg-green-600 text-white hover:bg-green-700 border-green-500'
+                }`}
+                title={`Switch to ${activeJob.syncMode === 'full' ? 'Incremental (Live)' : 'Full Refresh'} mode`}
+              >
+                {activeJob.syncMode === 'full' ? '⟳ Full' : '⚡ Live'}
+              </button>
+            )}
+
+            <button
+              onClick={toggleShowSource}
+              className={`px-2 py-1 text-xs rounded transition-colors ${
+                showSource
+                  ? 'bg-gray-600 text-white hover:bg-gray-700'
+                  : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+              }`}
+              title={showSource ? 'Hide Master Lane' : 'Show Master Lane'}
+            >
+              Master
             </button>
           </div>
 
@@ -484,6 +1078,46 @@ export const Timeline: React.FC = () => {
             >
               Settings
             </button>
+            <button
+              onClick={handleValidateClips}
+              className="px-2 py-1 text-xs rounded transition-colors bg-blue-700 text-gray-200 hover:bg-blue-600"
+              title={activeJob?.syncKey
+                ? "Run subsequent incremental sync using saved sync_key"
+                : "Validate clips and trigger first sync (will generate sync_key)"
+              }
+            >
+              {activeJob?.syncKey ? '⚡ Sync Again' : 'Validate Clips'}
+            </button>
+
+            {/* Sync Key Indicator */}
+            {activeJob?.syncKey && (
+              <div className="flex items-center gap-1 border-l border-gray-700 pl-2">
+                <span className="text-[10px] text-green-400 flex items-center gap-1" title={`Sync Key: ${activeJob.syncKey}`}>
+                  🔑 Incremental
+                </span>
+                {activeJob.lastSyncStatus && (
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                    activeJob.lastSyncStatus === 'completed' ? 'bg-green-900/50 text-green-300' :
+                    activeJob.lastSyncStatus === 'failed' ? 'bg-red-900/50 text-red-300' :
+                    activeJob.lastSyncStatus === 'running' ? 'bg-blue-900/50 text-blue-300' :
+                    'bg-gray-700 text-gray-400'
+                  }`}>
+                    {activeJob.lastSyncStatus}
+                  </span>
+                )}
+                <button
+                  onClick={() => {
+                    if (confirm('Reset incremental sync?\n\nThis will clear the sync_key and the next sync will be treated as a first sync (full payload).')) {
+                      useAppStore.getState().clearSyncKey(activeJob.id);
+                    }
+                  }}
+                  className="text-[10px] px-1.5 py-0.5 rounded bg-gray-700 text-gray-400 hover:bg-red-700 hover:text-white transition-colors"
+                  title="Clear sync_key and reset incremental sync"
+                >
+                  Reset
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
@@ -569,13 +1203,35 @@ export const Timeline: React.FC = () => {
                 />
               </motion.div>
 
+              {/* Master Lane - Single track for source/destination clips */}
+              {activeJob && activeJob.masterLane && showSource && (
+                <SpecialLane
+                  laneType="master"
+                  masterClips={activeJob.masterLane.clips}
+                  trackIndex={0}
+                  zoom={timeline.zoom}
+                  width={timelineWidth - trackHeaderWidth}
+                  syncMode={activeJob.syncMode}
+                />
+              )}
+
               {/* Groups with tracks - filter by visibility */}
               {groups
                 .filter(group => group.visible) // Only render visible groups
                 .sort((a, b) => a.index - b.index)
                 .map((group, index) => {
-                  // Calculate track offset for this group based on all previous VISIBLE groups
+                  // Calculate track offset for this group based on:
+                  // 1. Special lanes (Source and/or Destination)
+                  // 2. All previous VISIBLE groups
                   let trackOffset = 0;
+
+                  // Add offset for special lanes
+                  if (activeJob) {
+                    if (showSource) trackOffset++;
+                    if (showDestination) trackOffset++;
+                  }
+
+                  // Add offset for previous groups
                   const visibleGroups = groups.filter(g => g.visible).sort((a, b) => a.index - b.index);
                   for (let i = 0; i < index; i++) {
                     const prevGroup = visibleGroups[i];
@@ -585,6 +1241,7 @@ export const Timeline: React.FC = () => {
                       }
                     }
                   }
+
                   return (
                     <Group
                       key={group.id}

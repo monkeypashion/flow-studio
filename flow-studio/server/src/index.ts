@@ -3,6 +3,7 @@ import dotenv from 'dotenv';
 import { corsMiddleware } from './middleware/cors';
 import authRoutes from './routes/auth';
 import assetsRoutes from './routes/assets';
+import syncRoutes from './routes/sync';
 
 // Load environment variables
 dotenv.config();
@@ -24,6 +25,7 @@ app.use((req, res, next) => {
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/assets', assetsRoutes);
+app.use('/api/sync', syncRoutes);
 
 // Health check endpoint
 app.get('/health', (req, res) => {

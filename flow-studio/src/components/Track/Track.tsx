@@ -38,6 +38,10 @@ export const Track: React.FC<TrackProps> = ({
     showAssets,
     hoveredItem,
     selectedItem,
+    dataJobs,
+    activeJobId,
+    hoveredClipId,
+    getClip,
   } = useAppStore();
 
   // Check if this track should be highlighted
@@ -48,6 +52,34 @@ export const Track: React.FC<TrackProps> = ({
     (selectedItem?.type === 'track' && selectedItem.id === track.id) ||
     (selectedItem?.type === 'aspect' && aspectId && selectedItem.id === aspectId) ||
     (selectedItem?.type === 'group' && groupId && selectedItem.id === groupId);
+
+  // Check if this track is part of a source-destination connection with the hovered clip
+  const isLinkedToHoveredClip = React.useMemo(() => {
+    if (!hoveredClipId) return false;
+
+    const hoveredClip = getClip(hoveredClipId);
+    if (!hoveredClip) return false;
+
+    // Check if any clip in THIS track is linked to the hovered clip
+    return track.clips.some(clip => {
+      // Case 1: This track contains the hovered clip itself
+      if (clip.id === hoveredClipId && (clip.linkType === 'source' || clip.linkType === 'destination')) {
+        return true;
+      }
+
+      // Case 2: Hovered clip is destination, this track contains its source
+      if (hoveredClip.linkType === 'destination' && hoveredClip.sourceClipId === clip.id) {
+        return true;
+      }
+
+      // Case 3: This track contains a destination, and hovered clip is its source
+      if (clip.linkType === 'destination' && clip.sourceClipId === hoveredClipId) {
+        return true;
+      }
+
+      return false;
+    });
+  }, [hoveredClipId, track.clips, getClip]);
 
   const trackRef = useRef<HTMLDivElement>(null);
 
@@ -87,24 +119,48 @@ export const Track: React.FC<TrackProps> = ({
           time = Math.round(time / timeline.snapInterval) * timeline.snapInterval;
         }
 
-        // Calculate dynamic clip duration based on what's VISIBLE on screen (not Navigator viewport)
-        // Get the actual visible timeline width (excluding track headers)
-        const timelineContainer = document.querySelector('.hide-scrollbar') as HTMLElement;
-        const visibleWidth = (timelineContainer?.clientWidth || 1200) - trackHeaderWidth;
+        const activeJob = dataJobs.find(job => job.id === activeJobId);
+        // First clip in master lane is the master clip
+        const masterClip = activeJob?.masterLane?.clips?.[0];
 
-        // Calculate how much time is currently visible
-        const visibleDuration = visibleWidth / zoom;
+        // Check if we're in incremental/live mode
+        const isIncrementalMode = activeJob?.syncMode === 'incremental';
 
-        // Make clip 3% of visible duration, with min 5 seconds and max 3600 seconds (1 hour)
-        const defaultDuration = Math.max(5, Math.min(3600, visibleDuration * 0.03));
+        let clipStart: number;
+        let clipEnd: number | undefined;
 
-        // Create new clip at click position
+        if (isIncrementalMode && masterClip) {
+          // In live mode: create a live clip with the same start time as master
+          clipStart = masterClip.timeRange.start;
+          clipEnd = undefined; // Live clip has no end time
+        } else {
+          // In full mode or no master: use clicked position and calculate duration
+          clipStart = time;
+
+          let duration: number;
+          if (masterClip && masterClip.timeRange.end !== undefined) {
+            // Use Master's duration as the default
+            duration = masterClip.timeRange.end - masterClip.timeRange.start;
+          } else {
+            // Fallback: Calculate dynamic clip duration based on what's VISIBLE on screen
+            const timelineContainer = document.querySelector('.hide-scrollbar') as HTMLElement;
+            const visibleWidth = (timelineContainer?.clientWidth || 1200) - trackHeaderWidth;
+            const visibleDuration = visibleWidth / zoom;
+
+            // Make clip 3% of visible duration, with min 5 seconds and max 3600 seconds (1 hour)
+            duration = Math.max(5, Math.min(3600, visibleDuration * 0.03));
+          }
+
+          clipEnd = clipStart + duration;
+        }
+
+        // Create new clip
         addClip(track.id, {
           name: `Clip ${track.clips.length + 1}`,
           trackId: track.id,
           timeRange: {
-            start: time,
-            end: time + defaultDuration,
+            start: clipStart,
+            end: clipEnd,
           },
           state: 'uploading',
           progress: 0,
@@ -144,10 +200,14 @@ export const Track: React.FC<TrackProps> = ({
     <div className={`flex border-b ${isHighlighted ? 'border-cyan-500/30' : 'border-gray-700'}`} data-track-id={track.id}>
       {/* Track header - sticky so it stays visible during horizontal scroll */}
       <div
-        className={`flex-shrink-0 border-r px-3 py-2 flex flex-col gap-2 sticky left-0 z-20 transition-colors ${
-          isHighlighted ? 'bg-cyan-500/40 border-cyan-400' : 'bg-gray-800 border-gray-700'
+        className={`flex-shrink-0 border-r px-3 py-2 flex flex-col gap-2 sticky left-0 transition-colors ${
+          isLinkedToHoveredClip
+            ? 'bg-yellow-500/20 border-yellow-400 ring-2 ring-yellow-400 ring-inset'
+            : isHighlighted
+            ? 'bg-cyan-500/40 border-cyan-400'
+            : 'bg-gray-800 border-gray-700'
         }`}
-        style={{ height: `${track.height}px`, width: `${trackHeaderWidth}px` }}
+        style={{ height: `${track.height}px`, width: `${trackHeaderWidth}px`, zIndex: 70 }}
       >
         {/* Top row: Track name */}
         <div className="flex items-center min-w-0">
@@ -165,13 +225,19 @@ export const Track: React.FC<TrackProps> = ({
         <div className="flex items-center justify-between gap-2">
           {/* Left side: Badges */}
           <div className="flex items-center gap-1 min-w-0 overflow-hidden">
-            {/* Tenant color indicator - only show when assets are hidden */}
-            {!showAssets && tenantColor && (
-              <div
-                className="w-2 h-2 rounded-full flex-shrink-0"
-                style={{ backgroundColor: tenantColor }}
-                title={`Tenant: ${tenantId || 'Unknown'}`}
-              />
+            {/* Tenant badge - only show when assets are hidden */}
+            {!showAssets && tenantId && (
+              <div className="flex items-center gap-1 bg-gray-900 border border-gray-700 px-1.5 py-0.5 rounded">
+                {tenantColor && (
+                  <div
+                    className="w-2 h-2 rounded-full flex-shrink-0"
+                    style={{ backgroundColor: tenantColor }}
+                  />
+                )}
+                <span className="text-[10px] font-medium text-gray-400 whitespace-nowrap truncate" title={`Tenant: ${tenantId}`}>
+                  {tenantId}
+                </span>
+              </div>
             )}
             {track.dataType && (
               <span className="text-[10px] font-medium text-green-300 bg-gray-900 border border-gray-700 px-1 py-0.5 rounded whitespace-nowrap" title="Data Type">

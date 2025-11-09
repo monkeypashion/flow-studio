@@ -13,10 +13,36 @@ import type {
   DragState,
   DataType,
   TenantCredential,
-  DataJob
+  DataJob,
+  ClipRelationship
 } from '../types/index';
 import { mockBackend } from '../services/mockBackend';
 import { toAbsoluteTimestamp, toRelativeSeconds } from '../utils/timeConversion';
+
+// Color palette for new clips - visually distinct, thematically consistent
+const CLIP_COLOR_PALETTE = [
+  '#14b8a6', // Teal
+  '#8b5cf6', // Purple
+  '#f59e0b', // Amber
+  '#ec4899', // Pink
+  '#3b82f6', // Blue
+  '#10b981', // Emerald
+  '#f97316', // Orange
+  '#6366f1', // Indigo
+  '#84cc16', // Lime
+  '#06b6d4', // Cyan
+  '#d946ef', // Fuchsia
+  '#eab308', // Yellow
+];
+
+// Counter for cycling through colors
+let colorIndex = 0;
+
+const getNextClipColor = (): string => {
+  const color = CLIP_COLOR_PALETTE[colorIndex % CLIP_COLOR_PALETTE.length];
+  colorIndex++;
+  return color;
+};
 
 interface AppStore {
   // Groups (Assets)
@@ -46,12 +72,19 @@ interface AppStore {
   addClip: (trackId: string, clip: Omit<Clip, 'id'>) => string;
   removeClip: (clipId: string) => void;
   removeSelectedClips: () => void;
-  updateClip: (clipId: string, updates: Partial<Clip>) => void;
+  updateClip: (clipId: string, updates: Partial<Clip>, skipPositionSync?: boolean) => void;
   moveClip: (clipId: string, targetTrackId: string, newTimeRange: TimeRange) => void;
   moveSelectedClips: (deltaTime: number, targetTrackId?: string, originalPositions?: Array<{ id: string; start: number; end: number }>) => void;
   copyClip: (clipId: string, targetTrackId: string, newTimeRange: TimeRange) => string;
   copySelectedClips: (targetStartTime: number, targetTrackId?: string) => void;
   duplicateClip: (clipId: string) => string;
+  linkClipTo: (clipId: string, masterClipId: string | null) => void;
+  syncLinkedClipDurations: (masterClipId: string) => void;
+  syncLinkedClipPositions: (movedClipId: string, masterClipId: string) => void;
+  setClipAsSource: (clipId: string) => void;
+  setClipAsDestination: (clipId: string) => void;
+  setClipAsNone: (clipId: string) => void;
+  setDestinationSourceClip: (destClipId: string, sourceClipId: string | null) => void;
 
   // Selection
   selection: Selection;
@@ -85,18 +118,33 @@ interface AppStore {
   inspectorVisible: boolean;
   jobQueueVisible: boolean;
   settingsVisible: boolean;
+  clipManagerOpen: boolean;
   toggleInspector: () => void;
   toggleJobQueue: () => void;
   toggleSettings: () => void;
+  openClipManager: () => void;
+  closeClipManager: () => void;
+
+  // Clip Relationships
+  clipRelationships: ClipRelationship[];
+  addClipRelationship: (sourceClipIds: string[], destClipIds: string[]) => void;
+  removeClipRelationship: (relationshipId: string) => void;
+  clearClipRelationships: () => void;
 
   // UI view modes
   showAssets: boolean;
   showAspects: boolean;
+  showSource: boolean; // Show/hide Source lane
+  showDestination: boolean; // Show/hide Destination lane
+  showClipsOnly: boolean; // Show only tracks that have clips
   showOnlyVisible: boolean; // Filter sidebar to show only visible items
   hoveredItem: { type: 'group' | 'aspect' | 'track'; id: string } | null; // Item being hovered in sidebar
   selectedItem: { type: 'group' | 'aspect' | 'track'; id: string } | null; // Item clicked/selected in sidebar
   toggleShowAssets: () => void;
   toggleShowAspects: () => void;
+  toggleShowClipsOnly: () => void;
+  toggleShowSource: () => void;
+  toggleShowDestination: () => void;
   toggleShowOnlyVisible: () => void;
   setHoveredItem: (item: { type: 'group' | 'aspect' | 'track'; id: string } | null) => void;
   setSelectedItem: (item: { type: 'group' | 'aspect' | 'track'; id: string } | null) => void;
@@ -126,9 +174,16 @@ interface AppStore {
   renameDataJob: (jobId: string, name: string) => void;
   setActiveJob: (jobId: string | null) => void;
   toggleDataJobExpanded: (jobId: string) => void;
+  toggleSyncLinkedClipPositions: (jobId: string) => void;
   collapseAllGroupsInJob: (jobId: string) => void;
   toggleJobVisibility: (jobId: string) => void;
   addAssetsToJob: (jobId: string, groups: Group[]) => void;
+  setSyncMode: (jobId: string, mode: 'full' | 'incremental') => void;
+  setSyncKey: (jobId: string, syncKey: string) => void;
+  updateSyncStatus: (jobId: string, jobIdApi: string, status: 'pending' | 'running' | 'completed' | 'failed') => void;
+  clearSyncKey: (jobId: string) => void;
+  addMasterClip: (jobId: string, clipData: Omit<Clip, 'id' | 'trackId'>) => string;
+  removeMasterClip: (jobId: string, clipId: string) => void;
   saveDataJobsToStorage: () => void;
   loadDataJobsFromStorage: () => void;
 
@@ -161,6 +216,10 @@ interface AppStore {
   isMultiSelectDragIncompatible: boolean;
   setMultiSelectDragIncompatible: (incompatible: boolean) => void;
 
+  // Hovered clip (for showing source-destination connections)
+  hoveredClipId: string | null;
+  setHoveredClipId: (clipId: string | null) => void;
+
   // Progress handling
   handleProgress: (clipId: string, progress: number, state: ClipState) => void;
 
@@ -169,6 +228,7 @@ interface AppStore {
   getTrack: (trackId: string) => Track | undefined;
   getAspect: (aspectId: string) => Aspect | undefined;
   getGroup: (groupId: string) => Group | undefined;
+  getClipTenantId: (clipId: string) => string | undefined; // Get the tenant ID for a given clip
   getSelectedClips: () => Clip[];
   getAllTracks: () => Track[]; // Get all tracks from all aspects in all groups
 }
@@ -235,14 +295,23 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   isMultiSelectDragIncompatible: false,
 
+  hoveredClipId: null,
+
   // UI panels visibility
   inspectorVisible: false,
   jobQueueVisible: false,
   settingsVisible: false,
+  clipManagerOpen: false,
+
+  // Clip Relationships
+  clipRelationships: [],
 
   // UI view modes
   showAssets: true,
   showAspects: true,
+  showSource: false, // Default: hide Source lane
+  showDestination: false, // Default: hide Destination lane
+  showClipsOnly: false, // Default: show all tracks
   showOnlyVisible: false, // Default: show all items in sidebar
   hoveredItem: null,
   selectedItem: null,
@@ -670,7 +739,10 @@ export const useAppStore = create<AppStore>((set, get) => ({
     // Calculate absolute timestamps from relative timeRange
     // TODO: Hybrid approach - for future refactor, move to absolute-only storage
     const absoluteStartTime = toAbsoluteTimestamp(clipData.timeRange.start, startTime);
-    const absoluteEndTime = toAbsoluteTimestamp(clipData.timeRange.end, startTime);
+    // Handle live clips (end time is undefined)
+    const absoluteEndTime = clipData.timeRange.end !== undefined
+      ? toAbsoluteTimestamp(clipData.timeRange.end, startTime)
+      : undefined;
 
     const newClip: Clip = {
       ...clipData,
@@ -681,6 +753,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       state: clipData.state || 'idle',
       progress: clipData.progress || 0,
       selected: false,
+      color: clipData.color || getNextClipColor(), // Auto-assign unique color
       absoluteStartTime, // Store absolute time identity
       absoluteEndTime,   // Store absolute time identity
     };
@@ -727,77 +800,221 @@ export const useAppStore = create<AppStore>((set, get) => ({
     return clipId;
   },
 
-  removeClip: (clipId) => set((state) => ({
-    // Update active job's groups
-    dataJobs: state.dataJobs.map(job =>
-      job.id === state.activeJobId
-        ? {
-            ...job,
-            groups: job.groups.map(group => ({
-              ...group,
-              aspects: group.aspects.map(aspect => ({
-                ...aspect,
-                tracks: aspect.tracks.map(track => ({
-                  ...track,
-                  clips: track.clips.filter(c => c.id !== clipId),
-                })),
-              })),
-            })),
-          }
-        : job
-    ),
-    // Also update global groups for backward compatibility
-    groups: state.groups.map(group => ({
-      ...group,
-      aspects: group.aspects.map(aspect => ({
-        ...aspect,
-        tracks: aspect.tracks.map(track => ({
-          ...track,
-          clips: track.clips.filter(c => c.id !== clipId),
-        })),
-      })),
-    })),
-    selection: {
-      ...state.selection,
-      clipIds: new Set([...state.selection.clipIds].filter(id => id !== clipId)),
-    },
-  })),
+  removeClip: (clipId) => {
+    // First, unlink any clips that are linked to this one (convert them to normal clips)
+    const state = get();
+    const allClips: Clip[] = [];
 
-  updateClip: (clipId, updates) => set((state) => ({
-    // Update active job's groups
-    dataJobs: state.dataJobs.map(job =>
-      job.id === state.activeJobId
-        ? {
-            ...job,
-            groups: job.groups.map(group => ({
-              ...group,
-              aspects: group.aspects.map(aspect => ({
-                ...aspect,
-                tracks: aspect.tracks.map(track => ({
-                  ...track,
-                  clips: track.clips.map(clip =>
-                    clip.id === clipId ? { ...clip, ...updates } : clip
-                  ),
+    // Collect all clips from all jobs
+    state.dataJobs.forEach(job => {
+      job.groups.forEach(group => {
+        group.aspects.forEach(aspect => {
+          aspect.tracks.forEach(track => {
+            allClips.push(...track.clips);
+          });
+        });
+      });
+    });
+
+    // Unlink any clips linked to this master
+    allClips.forEach(clip => {
+      if (clip.linkedToClipId === clipId) {
+        get().updateClip(clip.id, { linkedToClipId: undefined, linkType: null, sourceClipId: undefined });
+      }
+      // Also clear sourceClipId if this was a source clip
+      if (clip.sourceClipId === clipId) {
+        get().updateClip(clip.id, { sourceClipId: undefined });
+      }
+    });
+
+    // Check if this is a master clip in Source/Destination lane
+    const activeJob = state.dataJobs.find(job => job.id === state.activeJobId);
+    const isMasterClip = activeJob?.masterLane.clips.some(c => c.id === clipId);
+
+    if (isMasterClip) {
+      // Remove master clip using dedicated function
+      get().removeMasterClip(activeJob!.id, clipId);
+      return;
+    } else {
+      // Remove regular clip from tracks
+      set((state) => ({
+        // Update active job's groups
+        dataJobs: state.dataJobs.map(job =>
+          job.id === state.activeJobId
+            ? {
+                ...job,
+                groups: job.groups.map(group => ({
+                  ...group,
+                  aspects: group.aspects.map(aspect => ({
+                    ...aspect,
+                    tracks: aspect.tracks.map(track => ({
+                      ...track,
+                      clips: track.clips.filter(c => c.id !== clipId),
+                    })),
+                  })),
                 })),
+              }
+            : job
+        ),
+        // Also update global groups for backward compatibility
+        groups: state.groups.map(group => ({
+          ...group,
+          aspects: group.aspects.map(aspect => ({
+            ...aspect,
+            tracks: aspect.tracks.map(track => ({
+              ...track,
+              clips: track.clips.filter(c => c.id !== clipId),
+            })),
+          })),
+        })),
+        selection: {
+          ...state.selection,
+          clipIds: new Set([...state.selection.clipIds].filter(id => id !== clipId)),
+        },
+      }));
+    }
+  },
+
+  updateClip: (clipId, updates, skipPositionSync = false) => {
+    // Get clip info before update to check if it's linked
+    const clipBeforeUpdate = get().getClip(clipId);
+    const isLinkedClip = !!clipBeforeUpdate?.linkedToClipId;
+    const masterClipId = clipBeforeUpdate?.linkedToClipId;
+
+    set((state) => {
+      const activeJob = state.dataJobs.find(job => job.id === state.activeJobId);
+
+      // Check if this is a master clip
+      const isMasterClip = activeJob?.masterLane?.clips.some(c => c.id === clipId);
+
+      if (isMasterClip) {
+        // Update master clip in master lane
+        const updatingClip = activeJob.masterLane.clips.find(c => c.id === clipId);
+        const isSourceMaster = updatingClip?.linkType === 'source';
+        const isIncrementalMode = activeJob.syncMode === 'incremental';
+
+        // If in incremental mode and timeRange.start is changing, sync all regular clips
+        const masterStartTimeChanged = isIncrementalMode && updates.timeRange?.start !== undefined;
+        const newMasterStartTime = masterStartTimeChanged ? updates.timeRange.start : null;
+
+        return {
+          dataJobs: state.dataJobs.map(job =>
+            job.id === state.activeJobId && job.masterLane
+              ? {
+                  ...job,
+                  masterLane: {
+                    clips: job.masterLane.clips.map((clip) => {
+                      // Update the clip that was requested
+                      if (clip.id === clipId) {
+                        return { ...clip, ...updates };
+                      }
+
+                      // If source master was updated and has timeRange changes, sync destination master (full mode only)
+                      if (isSourceMaster && clip.linkType === 'destination' && updates.timeRange && !isIncrementalMode) {
+                        // Find the updated source clip
+                        const sourceClip = job.masterLane.clips.find(c => c.id === clipId);
+                        if (!sourceClip) return clip;
+
+                        const updatedSourceClip = { ...sourceClip, ...updates };
+
+                        // Only sync if source has both start and end (not live)
+                        if (updatedSourceClip.timeRange.end !== undefined) {
+                          const sourceDuration = updatedSourceClip.timeRange.end - updatedSourceClip.timeRange.start;
+                          const newDestEnd = clip.timeRange.start + sourceDuration;
+
+                          return {
+                            ...clip,
+                            timeRange: {
+                              start: clip.timeRange.start,
+                              end: newDestEnd
+                            }
+                          };
+                        }
+                      }
+
+                      return clip;
+                    })
+                  },
+                  // In incremental mode: sync all regular clips' start times to match master
+                  groups: masterStartTimeChanged
+                    ? job.groups.map(group => ({
+                        ...group,
+                        aspects: group.aspects.map(aspect => ({
+                          ...aspect,
+                          tracks: aspect.tracks.map(track => ({
+                            ...track,
+                            clips: track.clips.map(clip => ({
+                              ...clip,
+                              timeRange: {
+                                start: newMasterStartTime!,
+                                end: clip.timeRange.end, // Keep existing end (or undefined for live clips)
+                              }
+                            }))
+                          }))
+                        }))
+                      }))
+                    : job.groups,
+                  updatedAt: new Date().toISOString()
+                }
+              : job
+          )
+        };
+      } else {
+        // Update regular clip in tracks
+        return {
+          dataJobs: state.dataJobs.map(job =>
+            job.id === state.activeJobId
+              ? {
+                  ...job,
+                  groups: job.groups.map(group => ({
+                    ...group,
+                    aspects: group.aspects.map(aspect => ({
+                      ...aspect,
+                      tracks: aspect.tracks.map(track => ({
+                        ...track,
+                        clips: track.clips.map(clip =>
+                          clip.id === clipId ? { ...clip, ...updates } : clip
+                        ),
+                      })),
+                    })),
+                  })),
+                }
+              : job
+          ),
+          // Also update global groups for backward compatibility
+          groups: state.groups.map(group => ({
+            ...group,
+            aspects: group.aspects.map(aspect => ({
+              ...aspect,
+              tracks: aspect.tracks.map(track => ({
+                ...track,
+                clips: track.clips.map(clip =>
+                  clip.id === clipId ? { ...clip, ...updates } : clip
+                ),
               })),
             })),
-          }
-        : job
-    ),
-    // Also update global groups for backward compatibility
-    groups: state.groups.map(group => ({
-      ...group,
-      aspects: group.aspects.map(aspect => ({
-        ...aspect,
-        tracks: aspect.tracks.map(track => ({
-          ...track,
-          clips: track.clips.map(clip =>
-            clip.id === clipId ? { ...clip, ...updates } : clip
-          ),
-        })),
-      })),
-    })),
-  })),
+          })),
+        };
+      }
+    });
+
+    // If timeRange changed, sync linked clips
+    if (updates.timeRange) {
+      // Sync duration for all linked clips (if this is a master)
+      get().syncLinkedClipDurations(clipId);
+
+      // Sync positions for all linked clips (if this is a linked clip and position sync is enabled)
+      if (!skipPositionSync && isLinkedClip && masterClipId) {
+        get().syncLinkedClipPositions(clipId, masterClipId);
+      }
+    }
+
+    // Auto-save to localStorage if master clip was updated
+    const clipAfterUpdate = get().getClip(clipId);
+    if (clipAfterUpdate?.linkType === 'source' || clipAfterUpdate?.linkType === 'destination') {
+      setTimeout(() => get().saveDataJobsToStorage(), 500);
+    }
+  },
 
   moveClip: (clipId, targetTrackId, newTimeRange) => set((state) => {
     // Get active job's groups
@@ -996,8 +1213,52 @@ export const useAppStore = create<AppStore>((set, get) => ({
       return ''; // Don't allow the copy
     }
 
+    // Check single-tenant constraint for source/destination clips
+    if (clip.linkType === 'source' || clip.linkType === 'destination') {
+      const state = get();
+      const activeJob = state.dataJobs.find(job => job.id === state.activeJobId);
+      if (!activeJob) return '';
+
+      // Get tenant of the target track
+      const targetAspect = get().getAspect(targetTrack.aspectId);
+      if (!targetAspect) return '';
+      const targetGroup = get().getGroup(targetAspect.groupId);
+      const targetTenantId = targetGroup?.tenantId;
+
+      // Check if there are existing clips of the same type
+      const existingClips: { clipId: string; tenantId?: string }[] = [];
+      activeJob.groups.forEach(group => {
+        group.aspects.forEach(aspect => {
+          aspect.tracks.forEach(track => {
+            track.clips.forEach(c => {
+              if (c.linkType === clip.linkType && c.id !== clipId) {
+                existingClips.push({
+                  clipId: c.id,
+                  tenantId: group.tenantId
+                });
+              }
+            });
+          });
+        });
+      });
+
+      // Validate single-tenant constraint
+      if (existingClips.length > 0) {
+        const existingTenantId = existingClips[0].tenantId;
+        if (existingTenantId !== targetTenantId) {
+          const clipTypeName = clip.linkType === 'source' ? 'source' : 'destination';
+          console.error(`❌ Tenant conflict: All ${clipTypeName} clips must belong to the same tenant. Existing ${clipTypeName} clips are from tenant "${existingTenantId || 'unknown'}", but the target track is from tenant "${targetTenantId || 'unknown'}".`);
+          alert(`❌ Tenant Conflict\n\nAll ${clipTypeName} clips must belong to the same tenant.\n\nExisting ${clipTypeName} clips: ${existingTenantId || 'unknown'}\nTarget track: ${targetTenantId || 'unknown'}\n\nCannot copy this clip to a different tenant.`);
+          return ''; // Block the copy
+        }
+      }
+    }
+
+    // Destructure to exclude color so copied clips get new colors
+    const { id, trackId, selected, color, ...clipData } = clip;
+
     const newClipId = get().addClip(targetTrackId, {
-      ...clip,
+      ...clipData,
       name: `${clip.name} (Copy)`,
       timeRange: newTimeRange,
     });
@@ -1009,8 +1270,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const clip = get().getClip(clipId);
     if (!clip) return '';
 
+    // Destructure to exclude color so duplicated clips get new colors
+    const { id, trackId, selected, color, ...clipData } = clip;
+
     const newClipId = get().addClip(clip.trackId, {
-      ...clip,
+      ...clipData,
       name: `${clip.name} (Copy)`,
       timeRange: {
         start: clip.timeRange.end + 1,
@@ -1019,6 +1283,396 @@ export const useAppStore = create<AppStore>((set, get) => ({
     });
 
     return newClipId;
+  },
+
+  // Linked clips
+  linkClipTo: (clipId, masterClipId) => {
+    const clip = get().getClip(clipId);
+    if (!clip) return;
+
+    if (masterClipId === null) {
+      // Unlink - remove the link reference and linkType
+      get().updateClip(clipId, { linkedToClipId: undefined, linkType: null });
+    } else {
+      // Link to master
+      const masterClip = get().getClip(masterClipId);
+      if (!masterClip) return;
+
+      // Don't allow linking to a clip that's already linked (one level deep only)
+      if (masterClip.linkedToClipId) {
+        console.warn('Cannot link to a clip that is already linked');
+        return;
+      }
+
+      // Check if this is a Source/Destination master (perfect alignment required)
+      const isSourceDestMaster = masterClip.linkType === 'source' || masterClip.linkType === 'destination';
+
+      if (isSourceDestMaster) {
+        // PERFECT ALIGNMENT: Both start AND end times must match exactly
+        // No offset allowed for Source/Destination masters
+        get().updateClip(clipId, {
+          linkedToClipId: masterClipId,
+          linkType: masterClip.linkType, // Inherit linkType from master
+          timeRange: {
+            start: masterClip.timeRange.start, // Exact match
+            end: masterClip.timeRange.end      // Exact match
+          }
+        });
+      } else {
+        // FLEXIBLE LINK (dormant in UI, but keeping logic for potential future use)
+        // Only duration is synced, start time can be independent
+        const masterDuration = masterClip.timeRange.end - masterClip.timeRange.start;
+
+        // Check if position sync mode is enabled
+        const state = get();
+        const activeJob = state.dataJobs.find(job => job.id === state.activeJobId);
+        let newStartTime = clip.timeRange.start;
+
+        // If position sync is enabled, align to existing linked clips' start time
+        if (activeJob?.syncLinkedClipPositions) {
+          // Find any other clips already linked to this master
+          const allClips: Clip[] = [];
+          activeJob.groups.forEach(group => {
+            group.aspects.forEach(aspect => {
+              aspect.tracks.forEach(track => {
+                allClips.push(...track.clips);
+              });
+            });
+          });
+
+          // Find the first linked clip (if any)
+          const existingLinkedClip = allClips.find(c => c.linkedToClipId === masterClipId && c.id !== clipId);
+          if (existingLinkedClip) {
+            // Align to the existing linked clip's start time
+            newStartTime = existingLinkedClip.timeRange.start;
+          }
+        }
+
+        const newEndTime = newStartTime + masterDuration;
+
+        // Update clip with link and new duration
+        get().updateClip(clipId, {
+          linkedToClipId: masterClipId,
+          linkType: null, // Flexible links have no linkType
+          timeRange: {
+            start: newStartTime,
+            end: newEndTime
+          }
+        });
+      }
+    }
+  },
+
+  syncLinkedClipDurations: (masterClipId) => {
+    const masterClip = get().getClip(masterClipId);
+    if (!masterClip) return;
+
+    const masterDuration = masterClip.timeRange.end - masterClip.timeRange.start;
+    const isSourceDestMaster = masterClip.linkType === 'source' || masterClip.linkType === 'destination';
+
+    // Find all clips linked to this master
+    const state = get();
+    const allClips: Clip[] = [];
+
+    // Collect all clips from all jobs
+    state.dataJobs.forEach(job => {
+      job.groups.forEach(group => {
+        group.aspects.forEach(aspect => {
+          aspect.tracks.forEach(track => {
+            allClips.push(...track.clips);
+          });
+        });
+      });
+    });
+
+    // If Source Master changed, sync Destination Master's duration to match
+    if (masterClip.trackId === 'source-master') {
+      const activeJob = state.dataJobs.find(job => job.id === state.activeJobId);
+      if (activeJob?.destinationLane.masterClip) {
+        const destMaster = activeJob.destinationLane.masterClip;
+        const newEndTime = destMaster.timeRange.start + masterDuration;
+        get().updateClip(destMaster.id, {
+          timeRange: {
+            start: destMaster.timeRange.start,
+            end: newEndTime
+          }
+        }, true); // Skip position sync to avoid infinite loop
+      }
+    }
+
+    // Update duration (and position for Source/Destination) of all linked clips
+    allClips.forEach(clip => {
+      if (clip.linkedToClipId === masterClipId) {
+        if (isSourceDestMaster) {
+          // PERFECT ALIGNMENT: Update both start and end to match master exactly
+          get().updateClip(clip.id, {
+            timeRange: {
+              start: masterClip.timeRange.start, // Match master's start
+              end: masterClip.timeRange.end      // Match master's end
+            }
+          }, true); // Skip position sync to avoid infinite loop
+        } else {
+          // FLEXIBLE LINK: Only update duration, keep start time
+          const newEndTime = clip.timeRange.start + masterDuration;
+          get().updateClip(clip.id, {
+            timeRange: {
+              start: clip.timeRange.start,
+              end: newEndTime
+            }
+          }, true); // Skip position sync to avoid infinite loop
+        }
+      }
+    });
+  },
+
+  syncLinkedClipPositions: (movedClipId: string, masterClipId: string) => {
+    // This function syncs all linked clips to have the same start time
+    // when position sync mode is enabled for the job
+    const movedClip = get().getClip(movedClipId);
+    if (!movedClip) return;
+
+    const state = get();
+    const activeJob = state.dataJobs.find(job => job.id === state.activeJobId);
+
+    // Only sync if the job has position sync enabled
+    if (!activeJob || !activeJob.syncLinkedClipPositions) return;
+
+    const newStartTime = movedClip.timeRange.start;
+    const duration = movedClip.timeRange.end - movedClip.timeRange.start;
+
+    // Find all other clips linked to the same master
+    const allClips: Clip[] = [];
+    activeJob.groups.forEach(group => {
+      group.aspects.forEach(aspect => {
+        aspect.tracks.forEach(track => {
+          allClips.push(...track.clips);
+        });
+      });
+    });
+
+    // Sync all linked clips to the same start time (except the one we just moved)
+    allClips.forEach(clip => {
+      if (clip.linkedToClipId === masterClipId && clip.id !== movedClipId) {
+        get().updateClip(clip.id, {
+          timeRange: {
+            start: newStartTime,
+            end: newStartTime + (clip.timeRange.end - clip.timeRange.start)
+          }
+        }, true); // Pass true to skip recursive position sync
+      }
+    });
+  },
+
+  // Clip type management (Source/Destination)
+  setClipAsSource: (clipId) => {
+    const clip = get().getClip(clipId);
+    if (!clip) return;
+
+    const state = get();
+    const activeJob = state.dataJobs.find(job => job.id === state.activeJobId);
+    if (!activeJob) return;
+
+    // Check if there's already a source clip on this track
+    const currentTrack = get().getTrack(clip.trackId);
+    if (currentTrack) {
+      const existingSourceOnTrack = currentTrack.clips.find(c => c.linkType === 'source' && c.id !== clipId);
+      if (existingSourceOnTrack) {
+        alert('⚠️ This track already has a source clip.\n\nEach track can only have one source clip.\n\nPlease clear the existing source clip first.');
+        return;
+      }
+    }
+
+    // First clip in master lane is the master clip (both modes) / source master (full mode)
+    const isIncrementalMode = activeJob.syncMode === 'incremental';
+    const masterClip = activeJob.masterLane?.clips?.[0];
+    if (!masterClip) {
+      const message = isIncrementalMode
+        ? 'No Master clip exists. Create a Master clip first.'
+        : 'No Source Master exists. Create a Source Master first.';
+      console.warn(message);
+      return;
+    }
+
+    // Check data type compatibility
+    const currentDataType = currentTrack?.dataType;
+    const masterLabel = isIncrementalMode ? 'Master' : 'Source Master';
+    if (masterClip.dataType && currentDataType && masterClip.dataType !== currentDataType) {
+      console.warn(`Data type mismatch: ${masterLabel} is ${masterClip.dataType}, clip is ${currentDataType}`);
+      return;
+    }
+
+    // Get tenant of the clip being set
+    const clipTenantId = get().getClipTenantId(clipId);
+
+    // Check if there are any existing source clips from a different tenant
+    const existingSourceClips: { clipId: string; tenantId?: string }[] = [];
+    activeJob.groups.forEach(group => {
+      group.aspects.forEach(aspect => {
+        aspect.tracks.forEach(track => {
+          track.clips.forEach(c => {
+            if (c.linkType === 'source' && c.id !== clipId) {
+              existingSourceClips.push({
+                clipId: c.id,
+                tenantId: group.tenantId
+              });
+            }
+          });
+        });
+      });
+    });
+
+    // Validate single-tenant constraint
+    if (existingSourceClips.length > 0) {
+      const existingTenantId = existingSourceClips[0].tenantId;
+      if (existingTenantId !== clipTenantId) {
+        console.error(`❌ Tenant conflict: All source clips must belong to the same tenant. Existing source clips are from tenant "${existingTenantId || 'unknown'}", but this clip is from tenant "${clipTenantId || 'unknown'}".`);
+        alert(`❌ Tenant Conflict\n\nAll source clips must belong to the same tenant.\n\nExisting source clips: ${existingTenantId || 'unknown'}\nThis clip: ${clipTenantId || 'unknown'}\n\nPlease clear existing source clips or choose a clip from the same tenant.`);
+        return;
+      }
+    }
+
+    // Link to Master with perfect alignment
+    get().updateClip(clipId, {
+      linkedToClipId: masterClip.id,
+      linkType: 'source',
+      timeRange: {
+        start: masterClip.timeRange.start,
+        end: masterClip.timeRange.end
+      },
+      sourceClipId: undefined // Clear any source reference when becoming a source clip
+    });
+  },
+
+  setClipAsDestination: (clipId) => {
+    const clip = get().getClip(clipId);
+    if (!clip) return;
+
+    const state = get();
+    const activeJob = state.dataJobs.find(job => job.id === state.activeJobId);
+    if (!activeJob) return;
+
+    // Check if there's already a destination clip on this track
+    const currentTrack = get().getTrack(clip.trackId);
+    if (currentTrack) {
+      const existingDestOnTrack = currentTrack.clips.find(c => c.linkType === 'destination' && c.id !== clipId);
+      if (existingDestOnTrack) {
+        alert('⚠️ This track already has a destination clip.\n\nEach track can only have one destination clip.\n\nPlease clear the existing destination clip first.');
+        return;
+      }
+    }
+
+    // In incremental/live mode: use the single master clip
+    // In full sync mode: use the second clip (destination master)
+    const isIncrementalMode = activeJob.syncMode === 'incremental';
+    const masterClip = isIncrementalMode
+      ? activeJob.masterLane?.clips?.[0]  // Single master in live mode
+      : activeJob.masterLane?.clips?.[1]; // Destination master in full mode
+
+    if (!masterClip) {
+      const message = isIncrementalMode
+        ? 'No Master clip exists. Create a Master clip first.'
+        : 'No Destination Master exists. Create a Destination Master first.';
+      console.warn(message);
+      return;
+    }
+
+    // Check data type compatibility
+    const currentDataType = currentTrack?.dataType;
+    if (masterClip.dataType && currentDataType && masterClip.dataType !== currentDataType) {
+      const masterLabel = isIncrementalMode ? 'Master' : 'Destination Master';
+      console.warn(`Data type mismatch: ${masterLabel} is ${masterClip.dataType}, clip is ${currentDataType}`);
+      return;
+    }
+
+    // Get tenant of the clip being set
+    const clipTenantId = get().getClipTenantId(clipId);
+
+    // Check if there are any existing destination clips from a different tenant
+    const existingDestClips: { clipId: string; tenantId?: string }[] = [];
+    activeJob.groups.forEach(group => {
+      group.aspects.forEach(aspect => {
+        aspect.tracks.forEach(track => {
+          track.clips.forEach(c => {
+            if (c.linkType === 'destination' && c.id !== clipId) {
+              existingDestClips.push({
+                clipId: c.id,
+                tenantId: group.tenantId
+              });
+            }
+          });
+        });
+      });
+    });
+
+    // Validate single-tenant constraint
+    if (existingDestClips.length > 0) {
+      const existingTenantId = existingDestClips[0].tenantId;
+      if (existingTenantId !== clipTenantId) {
+        console.error(`❌ Tenant conflict: All destination clips must belong to the same tenant. Existing destination clips are from tenant "${existingTenantId || 'unknown'}", but this clip is from tenant "${clipTenantId || 'unknown'}".`);
+        alert(`❌ Tenant Conflict\n\nAll destination clips must belong to the same tenant.\n\nExisting destination clips: ${existingTenantId || 'unknown'}\nThis clip: ${clipTenantId || 'unknown'}\n\nPlease clear existing destination clips or choose a clip from the same tenant.`);
+        return;
+      }
+    }
+
+    // Link to Master with perfect alignment
+    get().updateClip(clipId, {
+      linkedToClipId: masterClip.id,
+      linkType: 'destination',
+      timeRange: {
+        start: masterClip.timeRange.start,
+        end: masterClip.timeRange.end
+      }
+      // Keep sourceClipId if it already exists
+    });
+  },
+
+  setClipAsNone: (clipId) => {
+    const clip = get().getClip(clipId);
+    if (!clip) return;
+
+    // Unlink from master and clear type
+    get().updateClip(clipId, {
+      linkedToClipId: undefined,
+      linkType: null,
+      sourceClipId: undefined // Also clear source reference
+    });
+  },
+
+  setDestinationSourceClip: (destClipId, sourceClipId) => {
+    const destClip = get().getClip(destClipId);
+    if (!destClip) return;
+
+    // Only destination clips can have a source reference
+    if (destClip.linkType !== 'destination') {
+      console.warn('Only destination clips can have a source clip reference');
+      return;
+    }
+
+    if (sourceClipId === null) {
+      // Clear source reference
+      get().updateClip(destClipId, { sourceClipId: undefined });
+    } else {
+      const sourceClip = get().getClip(sourceClipId);
+      if (!sourceClip) return;
+
+      // Verify it's a source clip
+      if (sourceClip.linkType !== 'source') {
+        console.warn('Referenced clip must be a source clip');
+        return;
+      }
+
+      // Check data type compatibility
+      const destTrack = get().getTrack(destClip.trackId);
+      const sourceTrack = get().getTrack(sourceClip.trackId);
+      if (destTrack?.dataType && sourceTrack?.dataType && destTrack.dataType !== sourceTrack.dataType) {
+        console.warn(`Data type mismatch: Destination is ${destTrack.dataType}, Source is ${sourceTrack.dataType}`);
+        return;
+      }
+
+      // Set source reference (no timing effects)
+      // Duration is controlled by Destination Master, which follows Source Master
+      get().updateClip(destClipId, { sourceClipId });
+    }
   },
 
   // Multi-clip operations
@@ -1127,11 +1781,20 @@ export const useAppStore = create<AppStore>((set, get) => ({
           clipIds: newSelection,
           lastSelectedClipId: clipId, // Update anchor point
         },
-        // Update active job's groups
+        // Update active job's groups and master clips
         dataJobs: state.dataJobs.map(job =>
           job.id === state.activeJobId
             ? {
                 ...job,
+                // Update master clips' selected property
+                masterLane: job.masterLane
+                  ? {
+                      clips: job.masterLane.clips.map(clip => ({
+                        ...clip,
+                        selected: newSelection.has(clip.id),
+                      }))
+                    }
+                  : { clips: [] },
                 groups: job.groups.map(group => ({
                   ...group,
                   aspects: group.aspects.map(aspect => ({
@@ -1679,6 +2342,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   setMultiSelectDragIncompatible: (incompatible) => set(() => ({ isMultiSelectDragIncompatible: incompatible })),
 
+  setHoveredClipId: (clipId) => set(() => ({ hoveredClipId: clipId })),
+
   // Progress handling
   handleProgress: (clipId, progress, state) => {
     get().updateClip(clipId, { progress, state });
@@ -1691,6 +2356,14 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const activeJob = state.dataJobs.find(job => job.id === state.activeJobId);
     const groups = activeJob?.groups || state.groups; // Fallback to global groups for backward compatibility
 
+    // Check Source/Destination master clips first
+    // Check master lane first
+    if (activeJob && activeJob.masterLane) {
+      const masterClip = activeJob.masterLane.clips.find(c => c.id === clipId);
+      if (masterClip) return masterClip;
+    }
+
+    // Then check regular clips in tracks
     for (const group of groups) {
       for (const aspect of group.aspects) {
         for (const track of aspect.tracks) {
@@ -1739,6 +2412,28 @@ export const useAppStore = create<AppStore>((set, get) => ({
     return groups.find(g => g.id === groupId);
   },
 
+  getClipTenantId: (clipId) => {
+    const clip = get().getClip(clipId);
+    if (!clip) return undefined;
+
+    // Master clips don't belong to a tenant
+    if (clip.trackId === 'source-master' || clip.trackId === 'destination-master') {
+      return undefined;
+    }
+
+    // Get track to find aspect
+    const track = get().getTrack(clip.trackId);
+    if (!track) return undefined;
+
+    // Get aspect to find group
+    const aspect = get().getAspect(track.aspectId);
+    if (!aspect) return undefined;
+
+    // Get group to find tenant
+    const group = get().getGroup(aspect.groupId);
+    return group?.tenantId;
+  },
+
   getSelectedClips: () => {
     const state = get();
     // Read from active job's groups
@@ -1746,6 +2441,17 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const groups = activeJob?.groups || state.groups; // Fallback to global groups for backward compatibility
 
     const clips: Clip[] = [];
+
+    // Check master clips in master lane first
+    if (activeJob && activeJob.masterLane) {
+      activeJob.masterLane.clips.forEach(clip => {
+        if (state.selection.clipIds.has(clip.id)) {
+          clips.push(clip);
+        }
+      });
+    }
+
+    // Then check regular clips in tracks
     groups.forEach(group => {
       group.aspects.forEach(aspect => {
         aspect.tracks.forEach(track => {
@@ -1801,12 +2507,50 @@ export const useAppStore = create<AppStore>((set, get) => ({
     settingsVisible: !state.settingsVisible,
   })),
 
+  openClipManager: () => set({ clipManagerOpen: true }),
+
+  closeClipManager: () => set({ clipManagerOpen: false }),
+
+  // Clip Relationship methods
+  addClipRelationship: (sourceClipIds, destClipIds) => {
+    const relationshipId = `rel_${generateId()}`;
+    set((state) => ({
+      clipRelationships: [
+        ...state.clipRelationships,
+        {
+          id: relationshipId,
+          sourceClipIds,
+          destinationClipIds: destClipIds,
+          createdAt: Date.now()
+        }
+      ]
+    }));
+  },
+
+  removeClipRelationship: (relationshipId) => set((state) => ({
+    clipRelationships: state.clipRelationships.filter(r => r.id !== relationshipId)
+  })),
+
+  clearClipRelationships: () => set({ clipRelationships: [] }),
+
   toggleShowAssets: () => set((state) => ({
     showAssets: !state.showAssets,
   })),
 
   toggleShowAspects: () => set((state) => ({
     showAspects: !state.showAspects,
+  })),
+
+  toggleShowClipsOnly: () => set((state) => ({
+    showClipsOnly: !state.showClipsOnly,
+  })),
+
+  toggleShowSource: () => set((state) => ({
+    showSource: !state.showSource,
+  })),
+
+  toggleShowDestination: () => set((state) => ({
+    showDestination: !state.showDestination,
   })),
 
   toggleShowOnlyVisible: () => set((state) => ({
@@ -1985,7 +2729,12 @@ export const useAppStore = create<AppStore>((set, get) => ({
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       expanded: true,
-      groups: []
+      syncMode: 'full', // Default to full refresh mode
+      syncLinkedClipPositions: false, // Default: linked clips can have independent start times
+      groups: [],
+      masterLane: {
+        clips: [] // Initialize with no master clips
+      }
     };
 
     set((state) => ({
@@ -2061,6 +2810,69 @@ export const useAppStore = create<AppStore>((set, get) => ({
     }));
   },
 
+  toggleSyncLinkedClipPositions: (jobId) => {
+    // Get current state to check if we're turning it ON or OFF
+    const currentJob = get().dataJobs.find(j => j.id === jobId);
+    const willBeEnabled = !currentJob?.syncLinkedClipPositions;
+
+    set((state) => ({
+      dataJobs: state.dataJobs.map(job =>
+        job.id === jobId
+          ? { ...job, syncLinkedClipPositions: !job.syncLinkedClipPositions }
+          : job
+      )
+    }));
+
+    // If we just turned it ON, align all existing linked clips
+    if (willBeEnabled) {
+      const job = get().dataJobs.find(j => j.id === jobId);
+      if (!job) return;
+
+      // Collect all clips
+      const allClips: Clip[] = [];
+      job.groups.forEach(group => {
+        group.aspects.forEach(aspect => {
+          aspect.tracks.forEach(track => {
+            allClips.push(...track.clips);
+          });
+        });
+      });
+
+      // Group linked clips by their master
+      const masterGroups = new Map<string, Clip[]>();
+      allClips.forEach(clip => {
+        if (clip.linkedToClipId) {
+          if (!masterGroups.has(clip.linkedToClipId)) {
+            masterGroups.set(clip.linkedToClipId, []);
+          }
+          masterGroups.get(clip.linkedToClipId)!.push(clip);
+        }
+      });
+
+      // For each master, align all its linked clips to the first one's start time
+      masterGroups.forEach((linkedClips, masterClipId) => {
+        if (linkedClips.length > 1) {
+          // Use the first clip as the reference position
+          const referenceStartTime = linkedClips[0].timeRange.start;
+
+          // Align all other clips to this start time
+          linkedClips.slice(1).forEach(clip => {
+            const duration = clip.timeRange.end - clip.timeRange.start;
+            get().updateClip(clip.id, {
+              timeRange: {
+                start: referenceStartTime,
+                end: referenceStartTime + duration
+              }
+            }, true); // Skip position sync to avoid recursion
+          });
+        }
+      });
+    }
+
+    // Auto-save to localStorage
+    setTimeout(() => get().saveDataJobsToStorage(), 500);
+  },
+
   collapseAllGroupsInJob: (jobId) => {
     set((state) => ({
       dataJobs: state.dataJobs.map(job =>
@@ -2121,6 +2933,225 @@ export const useAppStore = create<AppStore>((set, get) => ({
       dataJobs: state.dataJobs.map(job =>
         job.id === jobId
           ? { ...job, groups: [...job.groups, ...groups], updatedAt: new Date().toISOString() }
+          : job
+      )
+    }));
+
+    // Auto-save to localStorage
+    setTimeout(() => get().saveDataJobsToStorage(), 500);
+  },
+
+  // Set sync mode for a job
+  setSyncMode: (jobId, mode) => {
+    set((state) => {
+      const job = state.dataJobs.find(j => j.id === jobId);
+      if (!job) return state;
+
+      // Check if job has any clips (master or ordinary)
+      const hasMasterClips = job.masterLane.clips.length > 0;
+      const hasOrdinaryClips = job.groups.some(group =>
+        group.aspects.some(aspect =>
+          aspect.tracks.some(track => track.clips.length > 0)
+        )
+      );
+
+      // Prevent switching modes if any clips exist
+      if (hasMasterClips || hasOrdinaryClips) {
+        alert(`⚠️ Cannot switch sync mode when clips exist.\n\nThe clip structure is completely different between Full and Live modes.\n\nPlease delete all clips before switching modes.`);
+        return state;
+      }
+
+      return {
+        dataJobs: state.dataJobs.map(j =>
+          j.id === jobId
+            ? { ...j, syncMode: mode, updatedAt: new Date().toISOString() }
+            : j
+        )
+      };
+    });
+
+    setTimeout(() => get().saveDataJobsToStorage(), 500);
+  },
+
+  // Set sync key for incremental sync
+  setSyncKey: (jobId, syncKey) => {
+    set((state) => ({
+      dataJobs: state.dataJobs.map(j =>
+        j.id === jobId
+          ? { ...j, syncKey, updatedAt: new Date().toISOString() }
+          : j
+      )
+    }));
+
+    setTimeout(() => get().saveDataJobsToStorage(), 500);
+  },
+
+  // Update sync status (job ID and status from API)
+  updateSyncStatus: (jobId, jobIdApi, status) => {
+    set((state) => ({
+      dataJobs: state.dataJobs.map(j =>
+        j.id === jobId
+          ? { ...j, lastSyncJobId: jobIdApi, lastSyncStatus: status, updatedAt: new Date().toISOString() }
+          : j
+      )
+    }));
+
+    setTimeout(() => get().saveDataJobsToStorage(), 500);
+  },
+
+  // Clear sync key (reset incremental sync)
+  clearSyncKey: (jobId) => {
+    set((state) => ({
+      dataJobs: state.dataJobs.map(j =>
+        j.id === jobId
+          ? { ...j, syncKey: undefined, lastSyncJobId: undefined, lastSyncStatus: undefined, updatedAt: new Date().toISOString() }
+          : j
+      )
+    }));
+
+    setTimeout(() => get().saveDataJobsToStorage(), 500);
+  },
+
+  // Add a master clip (first clip = source, second = destination for full mode)
+  addMasterClip: (jobId, clipData) => {
+    const clipId = `clip_${generateId()}`;
+    const { startTime } = get().timeline;
+    const state = get();
+    const job = state.dataJobs.find(j => j.id === jobId);
+
+    if (!job) {
+      console.error(`Job ${jobId} not found`);
+      return '';
+    }
+
+    // Validate: incremental mode only allows 1 clip
+    if (job.syncMode === 'incremental' && job.masterLane.clips.length >= 1) {
+      alert('⚠️ Incremental mode only allows 1 master clip');
+      return '';
+    }
+
+    // Validate: full mode requires checking which specific clips exist
+    if (job.syncMode === 'full') {
+      const hasSourceMaster = job.masterLane.clips.some(c => c.linkType === 'source');
+      const hasDestinationMaster = job.masterLane.clips.some(c => c.linkType === 'destination');
+
+      if (hasSourceMaster && hasDestinationMaster) {
+        alert('⚠️ Both master clips already exist (source & destination)');
+        return '';
+      }
+    }
+
+    // Validate: incremental mode requires live clip
+    if (job.syncMode === 'incremental' && clipData.timeRange.end !== undefined) {
+      alert('⚠️ Incremental mode requires a LIVE clip (no end time)');
+      return '';
+    }
+
+    // Determine clip type based on what's missing (in full mode) or just source (in incremental mode)
+    const trackId = 'master'; // Single track ID for all master clips
+
+    let linkType: 'source' | 'destination';
+    if (job.syncMode === 'incremental') {
+      // Incremental mode: always source
+      linkType = 'source';
+    } else {
+      // Full sync mode: check which clip type is missing
+      const hasSourceMaster = job.masterLane.clips.some(c => c.linkType === 'source');
+      const hasDestinationMaster = job.masterLane.clips.some(c => c.linkType === 'destination');
+
+      if (!hasSourceMaster) {
+        linkType = 'source';
+      } else if (!hasDestinationMaster) {
+        linkType = 'destination';
+      } else {
+        // Both exist - shouldn't get here due to validation above
+        console.error('Both master clips already exist');
+        return '';
+      }
+    }
+
+    // Validate that we have valid timeline start time and clip start time
+    if (!startTime) {
+      console.error('Timeline startTime is not set');
+      alert('⚠️ Timeline is not initialized. Please refresh the page.');
+      return '';
+    }
+
+    if (clipData.timeRange.start === undefined || isNaN(clipData.timeRange.start)) {
+      console.error('Invalid clip start time:', clipData.timeRange.start);
+      alert('⚠️ Invalid clip position. Please try again.');
+      return '';
+    }
+
+    // Calculate absolute timestamps (handle live clips)
+    const absoluteStartTime = toAbsoluteTimestamp(clipData.timeRange.start, startTime);
+    const absoluteEndTime = clipData.timeRange.end !== undefined
+      ? toAbsoluteTimestamp(clipData.timeRange.end, startTime)
+      : undefined;
+
+    const newClip: Clip = {
+      ...clipData,
+      id: clipId,
+      trackId,
+      state: clipData.state || 'idle',
+      progress: clipData.progress || 0,
+      selected: false,
+      color: clipData.color || (linkType === 'source' ? '#14b8a6' : '#8b5cf6'), // Teal for source, purple for destination
+      absoluteStartTime,
+      absoluteEndTime,
+      linkType,
+    };
+
+    set((state) => ({
+      dataJobs: state.dataJobs.map(j =>
+        j.id === jobId
+          ? {
+              ...j,
+              masterLane: {
+                clips: [...j.masterLane.clips, newClip]
+              },
+              updatedAt: new Date().toISOString()
+            }
+          : j
+      )
+    }));
+
+    // If we just created a source master in full mode, sync any existing destination master's duration
+    // Note: We don't set linkedToClipId on master clips - they're linked structurally by being in the master lane
+    if (job.syncMode === 'full' && linkType === 'source') {
+      const updatedJob = get().dataJobs.find(j => j.id === jobId);
+      const destMaster = updatedJob?.masterLane.clips.find(c => c.linkType === 'destination');
+
+      if (destMaster && newClip.timeRange.end !== undefined) {
+        // Sync destination master's duration to match new source master
+        const sourceDuration = newClip.timeRange.end - newClip.timeRange.start;
+        get().updateClip(destMaster.id, {
+          timeRange: {
+            start: destMaster.timeRange.start,
+            end: destMaster.timeRange.start + sourceDuration // Match source duration
+          }
+        });
+      }
+    }
+
+    // Auto-save to localStorage
+    setTimeout(() => get().saveDataJobsToStorage(), 500);
+
+    return clipId;
+  },
+
+  // Remove a specific master clip
+  removeMasterClip: (jobId, clipId) => {
+    set((state) => ({
+      dataJobs: state.dataJobs.map(job =>
+        job.id === jobId
+          ? {
+              ...job,
+              masterLane: {
+                clips: job.masterLane.clips.filter(c => c.id !== clipId)
+              },
+              updatedAt: new Date().toISOString()
+            }
           : job
       )
     }));

@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { randomUUID } from 'crypto';
 
 const router = Router();
 
@@ -181,8 +182,11 @@ function mapDataType(mindSphereType: string): string {
 // Transform MindSphere data to Flow Studio structure
 function transformToFlowStudioStructure(assets: any[]): any[] {
   return assets.map((asset, assetIndex) => {
+    // Use randomUUID to ensure unique group IDs even for the same asset
+    const groupId = `group_${randomUUID()}`;
+
     const group = {
-      id: `group_${asset.assetId}`,
+      id: groupId,
       name: asset.name,
       assetId: asset.assetId,
       expanded: false,  // Start collapsed
@@ -193,8 +197,11 @@ function transformToFlowStudioStructure(assets: any[]): any[] {
     };
 
     asset.aspects.forEach((aspect: any, aspectIndex: number) => {
+      // Use randomUUID for aspects too
+      const aspectId = `aspect_${randomUUID()}`;
+
       const aspectObj = {
-        id: `aspect_${asset.assetId}_${aspect.aspectId}`,
+        id: aspectId,
         groupId: group.id,
         name: aspect.name,
         aspectType: aspect.aspectTypeId,
@@ -206,8 +213,11 @@ function transformToFlowStudioStructure(assets: any[]): any[] {
       };
 
       aspect.variables.forEach((variable: any, varIndex: number) => {
+        // Use randomUUID for tracks too
+        const trackId = `track_${randomUUID()}`;
+
         const track = {
-          id: `track_${asset.assetId}_${aspect.aspectId}_${variable.name}`,
+          id: trackId,
           aspectId: aspectObj.id,
           name: variable.name,
           property: variable.name,
@@ -455,6 +465,183 @@ router.post('/load', async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       message: error.message || 'Failed to load assets'
+    });
+  }
+});
+
+// Search assets using API filtering
+router.post('/search', async (req: Request, res: Response) => {
+  try {
+    const { tenantId, clientId, clientSecret, searchTerm, typeId } = req.body;
+
+    if (!tenantId || !clientId || !clientSecret) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required fields: tenantId, clientId, clientSecret'
+      });
+    }
+
+    if (!searchTerm || searchTerm.trim() === '') {
+      return res.json({
+        success: true,
+        assets: []
+      });
+    }
+
+    console.log(`\n=== Searching Assets ===`);
+    console.log(`Tenant: ${tenantId}`);
+    console.log(`Search term: ${searchTerm}`);
+
+    // Get access token
+    const accessToken = await getAccessToken(tenantId, clientId, clientSecret);
+
+    // Build filter query
+    const filter: any = {
+      name: {
+        contains: searchTerm
+      }
+    };
+
+    // Add type filter if specified
+    if (typeId) {
+      filter.hasType = typeId; // Use hasType to include descendants
+    }
+
+    // Call Insights Hub API with filter
+    const url = 'https://gateway.eu1.mindsphere.io/api/assetmanagement/v3/assets';
+    const params = new URLSearchParams({
+      filter: JSON.stringify(filter),
+      size: '100' // Return up to 100 results
+    });
+
+    console.log(`API URL: ${url}?${params.toString()}`);
+
+    const response = await fetch(`${url}?${params.toString()}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`API returned ${response.status}: ${await response.text()}`);
+    }
+
+    const data = await response.json();
+    const assets = data._embedded?.assets || [];
+
+    console.log(`Found ${assets.length} matching assets`);
+
+    // Return simplified asset list with type path info
+    const results = assets.map((asset: any) => ({
+      assetId: asset.assetId,
+      name: asset.name,
+      typeId: asset.typeId,
+      description: asset.description,
+      parentId: asset.parentId
+    }));
+
+    res.json({
+      success: true,
+      assets: results,
+      totalResults: data.page?.totalElements || assets.length
+    });
+
+  } catch (error: any) {
+    console.error('Error searching assets:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to search assets'
+    });
+  }
+});
+
+// Load all assets (paginated) for a tenant
+router.post('/load-all', async (req: Request, res: Response) => {
+  try {
+    const { tenantId, clientId, clientSecret, maxAssets = 500 } = req.body;
+
+    if (!tenantId || !clientId || !clientSecret) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required fields: tenantId, clientId, clientSecret'
+      });
+    }
+
+    console.log(`\n=== Loading All Assets ===`);
+    console.log(`Tenant: ${tenantId}`);
+    console.log(`Max assets: ${maxAssets}`);
+
+    // Get access token
+    const accessToken = await getAccessToken(tenantId, clientId, clientSecret);
+
+    // Fetch assets with pagination
+    let allAssets: any[] = [];
+    let page = 0;
+    const pageSize = 100;
+    let hasMore = true;
+
+    while (hasMore && allAssets.length < maxAssets) {
+      const url = 'https://gateway.eu1.mindsphere.io/api/assetmanagement/v3/assets';
+      const params = new URLSearchParams({
+        page: page.toString(),
+        size: pageSize.toString()
+      });
+
+      console.log(`Fetching page ${page}...`);
+
+      const response = await fetch(`${url}?${params.toString()}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`API returned ${response.status}: ${await response.text()}`);
+      }
+
+      const data = await response.json();
+      const assets = data._embedded?.assets || [];
+
+      allAssets.push(...assets);
+      console.log(`  Retrieved ${assets.length} assets (total: ${allAssets.length})`);
+
+      // Check if there are more pages
+      hasMore = assets.length === pageSize && allAssets.length < maxAssets;
+      page++;
+
+      // Safety limit
+      if (page >= 10) {
+        console.log(`Reached page limit (10 pages)`);
+        break;
+      }
+    }
+
+    console.log(`Loaded ${allAssets.length} total assets`);
+
+    // Return simplified asset list
+    const results = allAssets.map((asset: any) => ({
+      assetId: asset.assetId,
+      name: asset.name,
+      typeId: asset.typeId,
+      description: asset.description,
+      parentId: asset.parentId
+    }));
+
+    res.json({
+      success: true,
+      assets: results,
+      totalAssets: allAssets.length
+    });
+
+  } catch (error: any) {
+    console.error('Error loading all assets:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to load all assets'
     });
   }
 });

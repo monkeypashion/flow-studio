@@ -14,7 +14,7 @@ export interface Size {
 
 export interface TimeRange {
   start: number;  // in seconds
-  end: number;    // in seconds
+  end?: number;   // in seconds - optional for "live" clips that extend to current time
 }
 
 export interface Clip {
@@ -33,6 +33,10 @@ export interface Clip {
   // For future refactor: move to absolute-only storage (see REFACTOR_REMINDER.md)
   absoluteStartTime?: string; // ISO 8601 timestamp - absolute time identity
   absoluteEndTime?: string;   // ISO 8601 timestamp - absolute time identity
+  lastSyncedTime?: string; // ISO 8601 timestamp - last time data was synced (for progress calculation on live clips)
+  linkedToClipId?: string; // Reference to master clip (Source/Destination Master) - timing controlled by master
+  linkType?: 'source' | 'destination' | null; // Type of link: source/destination master or flexible (null)
+  sourceClipId?: string; // For destination clips only - which source clip this pulls data from (no timing effect)
 }
 
 export interface Group {
@@ -41,6 +45,9 @@ export interface Group {
   assetId?: string; // IoT asset identifier
   tenantId?: string; // Which tenant this asset belongs to
   tenantColor?: string; // Color tag from tenant credential
+  clientId?: string; // OAuth client ID for API access
+  clientSecret?: string; // OAuth client secret for API access
+  region?: string; // Region/host for API endpoint
   expanded: boolean;
   visible: boolean; // Show/hide in timeline
   visibilityMode?: 'explicit' | 'implicit'; // How visibility was set
@@ -100,6 +107,13 @@ export interface ClipboardData {
   sourceTrackId: string;
 }
 
+export interface ClipRelationship {
+  id: string;
+  sourceClipIds: string[];
+  destinationClipIds: string[];
+  createdAt: number;
+}
+
 export interface TimelineState {
   zoom: number;        // pixels per second
   scrollX: number;
@@ -137,11 +151,14 @@ export interface TenantCredential {
   tenantId: string;
   clientId: string;
   clientSecret: string;
+  region: string;
   isDefault?: boolean;
   color?: string;
   createdAt: string;
   lastUsed?: string;
 }
+
+export type SyncMode = 'full' | 'incremental';
 
 export interface DataJob {
   id: string;
@@ -149,5 +166,13 @@ export interface DataJob {
   createdAt: string;
   updatedAt: string;
   expanded: boolean;
+  syncMode: SyncMode; // 'full' = full refresh (2 clips), 'incremental' = live sync (1 clip)
+  syncLinkedClipPositions: boolean; // When true, all linked clips share the same start time
+  syncKey?: string; // Incremental sync key from API (used for subsequent syncs)
+  lastSyncJobId?: string; // Last job ID that was triggered
+  lastSyncStatus?: 'pending' | 'running' | 'completed' | 'failed'; // Status of last sync
   groups: Group[]; // Assets in this job (reusing existing Group type)
+  masterLane: {
+    clips: Clip[]; // Max 2 clips: [0]=source, [1]=destination (full), OR 1 live clip (incremental)
+  };
 }
