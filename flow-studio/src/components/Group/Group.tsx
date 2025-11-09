@@ -104,17 +104,37 @@ export const Group: React.FC<GroupProps> = ({
 
               </div>
 
-              {/* Asset ID badge */}
-              {group.assetId && (
-                <div className="mt-1">
+              {/* Tenant and Asset ID badges */}
+              <div className="mt-1 space-y-0.5">
+                {/* Tenant badge with color indicator */}
+                {group.tenantId && (
+                  <div className="flex items-center gap-1.5">
+                    {group.tenantColor && (
+                      <div
+                        className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: group.tenantColor }}
+                        title={`Tenant: ${group.tenantId}`}
+                      />
+                    )}
+                    <span
+                      className="text-[10px] text-gray-500 bg-gray-900 px-2 py-0.5 rounded truncate"
+                      title={`Tenant: ${group.tenantId}`}
+                    >
+                      {group.tenantId}
+                    </span>
+                  </div>
+                )}
+
+                {/* Asset ID badge */}
+                {group.assetId && (
                   <span
                     className="text-[10px] text-gray-500 bg-gray-900 px-2 py-0.5 rounded block truncate max-w-full"
                     title={group.assetId}
                   >
                     {group.assetId}
                   </span>
-                </div>
-              )}
+                )}
+              </div>
             </div>
 
             {/* Right side - Timeline header for group */}

@@ -20,6 +20,14 @@ export const SelectionOverlay: React.FC<SelectionOverlayProps> = ({ containerRef
   const activeJob = dataJobs.find(job => job.id === activeJobId);
   const groups = activeJob?.groups || [];
 
+  // Helper to get current timeline position for live clips
+  const getCurrentTimelinePosition = (): number => {
+    const timelineStartMs = new Date(timeline.startTime).getTime();
+    const nowMs = Date.now();
+    const currentPositionInSeconds = (nowMs - timelineStartMs) / 1000;
+    return currentPositionInSeconds;
+  };
+
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -93,7 +101,42 @@ export const SelectionOverlay: React.FC<SelectionOverlayProps> = ({ containerRef
 
       // Calculate track positions and check which clips intersect with selection
       // IMPORTANT: Only iterate through VISIBLE groups/aspects/tracks (matches Timeline rendering)
+
+      // First, check master lane for all master clips (source/destination on single track)
       let trackIndex = 0;
+      if (activeJob && activeJob.masterLane.clips.length > 0) {
+        const trackElement = document.querySelector(`[data-special-lane="master"]`) as HTMLElement;
+
+        activeJob.masterLane.clips.forEach(clip => {
+          let clipTop = 0;
+          let clipBottom = 0;
+
+          if (trackElement && timelineContainer) {
+            const trackRect = trackElement.getBoundingClientRect();
+            const timelineRect = timelineContainer.getBoundingClientRect();
+            clipTop = trackRect.top - timelineRect.top;
+            clipBottom = clipTop + 80; // Default special lane height
+          }
+
+          const clipLeft = clip.timeRange.start * timeline.zoom + trackHeaderWidth;
+          // Handle live clips (end is undefined)
+          const clipEndTime = clip.timeRange.end !== undefined ? clip.timeRange.end : getCurrentTimelinePosition();
+          const clipRight = clipEndTime * timeline.zoom + trackHeaderWidth;
+
+          const intersects =
+            clipLeft < selectionRect.right &&
+            clipRight > selectionRect.left &&
+            clipTop < selectionRect.bottom &&
+            clipBottom > selectionRect.top;
+
+          if (intersects) {
+            clipsToSelect.add(clip.id);
+          }
+        });
+
+        trackIndex++;
+      }
+
       groups
         .filter(group => group.visible) // Only visible groups
         .sort((a, b) => a.index - b.index)
@@ -124,7 +167,9 @@ export const SelectionOverlay: React.FC<SelectionOverlayProps> = ({ containerRef
                     // Clip positions in timeline container coordinates
                     // Add header width to convert from track-relative to container-relative
                     const clipLeft = clip.timeRange.start * timeline.zoom + trackHeaderWidth;
-                    const clipRight = clip.timeRange.end * timeline.zoom + trackHeaderWidth;
+                    // Handle live clips (end is undefined)
+                    const clipEndTime = clip.timeRange.end !== undefined ? clip.timeRange.end : getCurrentTimelinePosition();
+                    const clipRight = clipEndTime * timeline.zoom + trackHeaderWidth;
 
                     // Check if clip intersects with selection box (any overlap)
                     const intersects =

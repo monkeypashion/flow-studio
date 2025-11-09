@@ -30,6 +30,7 @@ export const Aspect: React.FC<AspectProps> = ({
     toggleAspectVisible,
     showAssets,
     showAspects,
+    showClipsOnly,
     selectedItem,
     trackHeaderWidth,
   } = useAppStore();
@@ -152,7 +153,15 @@ export const Aspect: React.FC<AspectProps> = ({
               )
             ) : (
               aspect.tracks
-                .filter(track => track.visible) // Only render visible tracks
+                .filter(track => {
+                  // Filter by visibility
+                  if (!track.visible) return false;
+
+                  // If showClipsOnly is enabled, only show tracks with clips
+                  if (showClipsOnly && track.clips.length === 0) return false;
+
+                  return true;
+                })
                 .sort((a, b) => a.index - b.index)
                 .map((track, index) => (
                   <Track

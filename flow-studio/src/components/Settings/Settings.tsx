@@ -26,6 +26,7 @@ export const Settings: React.FC = () => {
     tenantId: '',
     clientId: '',
     clientSecret: '',
+    region: 'eu1',
     color: '#3b82f6', // blue-500
   });
 
@@ -39,6 +40,7 @@ export const Settings: React.FC = () => {
       tenantId: '',
       clientId: '',
       clientSecret: '',
+      region: 'eu1',
       color: '#3b82f6',
     });
     setIsEditing(false);
@@ -50,6 +52,7 @@ export const Settings: React.FC = () => {
       tenantId: tenant.tenantId,
       clientId: tenant.clientId,
       clientSecret: tenant.clientSecret,
+      region: tenant.region || 'eu1',
       color: tenant.color || '#3b82f6',
     });
     setIsEditing(true);
@@ -169,6 +172,18 @@ export const Settings: React.FC = () => {
                 value={formData.clientSecret}
                 onChange={(e) => setFormData({ ...formData, clientSecret: e.target.value })}
                 placeholder="Enter client secret"
+                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-400 mb-1">Region</label>
+              <input
+                type="text"
+                value={formData.region}
+                onChange={(e) => setFormData({ ...formData, region: e.target.value })}
+                placeholder="e.g., eu1, eu2, cn1"
                 className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 required
               />
